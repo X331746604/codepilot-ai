@@ -48,7 +48,7 @@ export type TaskType = (typeof TASK_TYPES)[number]["value"];
 
 export const DEFAULT_TASK_TYPE: TaskType = "generate";
 
-export const TASK_TYPE_VALUES = TASK_TYPES.map((task) => task.value);
+export const TASK_TYPE_VALUES = TASK_TYPES.map((task) => task.value) as [TaskType, ...TaskType[]];
 
 export function getTaskType(value: TaskType) {
   return TASK_TYPES.find((task) => task.value === value) ?? TASK_TYPES[0];
@@ -69,7 +69,10 @@ export type Language = (typeof LANGUAGES)[number]["value"];
 
 export const DEFAULT_LANGUAGE: Language = "typescript";
 
-export const LANGUAGE_VALUES = LANGUAGES.map((language) => language.value);
+export const LANGUAGE_VALUES = LANGUAGES.map((language) => language.value) as [
+  Language,
+  ...Language[],
+];
 
 export function getLanguageLabel(value: string) {
   return LANGUAGES.find((language) => language.value === value)?.label ?? value;
