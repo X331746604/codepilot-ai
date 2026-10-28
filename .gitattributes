@@ -1,0 +1,8 @@
+# 统一行尾为 LF，避免 Windows / macOS 协作时产生整文件级 diff 噪音
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+pnpm-lock.yaml text eol=lf
