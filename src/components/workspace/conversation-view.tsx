@@ -13,6 +13,7 @@ type ConversationViewProps = {
   onPickExample: (mode: TaskType, prompt: string) => void;
   onRetry: () => void;
   onStop: () => void;
+  onSaveSnippet: (exchange: Exchange) => void;
 };
 
 export function ConversationView({
@@ -21,6 +22,7 @@ export function ConversationView({
   onPickExample,
   onRetry,
   onStop,
+  onSaveSnippet,
 }: ConversationViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   // 只有用户本来就贴着底部时才自动跟随；否则会把正在往回翻的人拽回底部。
@@ -52,6 +54,7 @@ export function ConversationView({
               exchange={exchange}
               onRetry={onRetry}
               onStop={onStop}
+              onSaveSnippet={onSaveSnippet}
               canRetry={
                 index === exchanges.length - 1 &&
                 !isStreaming &&

@@ -21,3 +21,45 @@ export const listQuerySchema = z.object({
 });
 
 export const idSchema = z.uuid("会话 ID 不合法");
+
+const snippetTitle = z
+  .string()
+  .trim()
+  .min(1, "标题不能为空")
+  .max(LIMITS.snippetTitle, `标题不能超过 ${LIMITS.snippetTitle} 字`);
+
+// 代码不做 trim：首行缩进可能是有意义的
+const snippetCode = z
+  .string()
+  .min(1, "代码不能为空")
+  .max(LIMITS.snippetCode, `代码不能超过 ${LIMITS.snippetCode} 字`)
+  .refine((value) => value.trim().length > 0, "代码不能只有空白字符");
+
+const snippetDescription = z
+  .string()
+  .trim()
+  .max(LIMITS.snippetDescription, `描述不能超过 ${LIMITS.snippetDescription} 字`)
+  .nullish();
+
+export const createSnippetSchema = z.object({
+  title: snippetTitle,
+  language: z.enum(LANGUAGE_VALUES, { error: "不支持的编程语言" }),
+  code: snippetCode,
+  description: snippetDescription,
+  sourceMessageId: z.uuid("来源消息 ID 不合法").nullish(),
+});
+
+export const updateSnippetSchema = z
+  .object({
+    title: snippetTitle.optional(),
+    language: z.enum(LANGUAGE_VALUES, { error: "不支持的编程语言" }).optional(),
+    code: snippetCode.optional(),
+    description: snippetDescription,
+  })
+  .refine((value) => Object.keys(value).length > 0, { error: "至少提供一个要修改的字段" });
+
+export const listSnippetQuerySchema = z.object({
+  q: z.string().trim().max(60).optional(),
+  language: z.enum(LANGUAGE_VALUES, { error: "不支持的编程语言" }).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+});

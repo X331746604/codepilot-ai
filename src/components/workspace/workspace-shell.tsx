@@ -2,8 +2,10 @@
 
 import { useRef, useState } from "react";
 import { Menu, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Brand } from "@/components/layout/brand";
+import { SnippetDialog, type SnippetDraft } from "@/components/snippets/snippet-dialog";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,13 +24,16 @@ import { SessionSidebar } from "@/components/workspace/session-sidebar";
 import { TaskComposer } from "@/components/workspace/task-composer";
 import { useAiTask } from "@/hooks/use-ai-task";
 import { useConversations } from "@/hooks/use-conversations";
+import { createSnippetRequest } from "@/lib/api-client/snippets";
 import {
   DEFAULT_LANGUAGE,
   DEFAULT_TASK_TYPE,
+  getTaskType,
   type Language,
   type RefactorGoal,
   type TaskType,
 } from "@/lib/constants";
+import { extractCodeBlocks } from "@/lib/markdown/extract-code";
 
 const DEFAULT_GOALS: RefactorGoal[] = ["naming", "split", "readability"];
 
@@ -40,6 +45,14 @@ export function WorkspaceShell() {
   const [constraint, setConstraint] = useState("");
   const [goals, setGoals] = useState<RefactorGoal[]>(DEFAULT_GOALS);
   const [navOpen, setNavOpen] = useState(false);
+  const [snippetOpen, setSnippetOpen] = useState(false);
+  const [snippetDraft, setSnippetDraft] = useState<SnippetDraft>({
+    title: "",
+    language: DEFAULT_LANGUAGE,
+    description: "",
+    code: "",
+  });
+  const [snippetPending, setSnippetPending] = useState(false);
 
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const { exchanges, isStreaming, conversationId, run, stop, retry, reset, openConversation } =
@@ -107,6 +120,42 @@ export function WorkspaceShell() {
     await conversations.remove(id);
     // 删掉的正是当前打开的会话时，清空工作区
     if (id === conversationId) reset();
+  }
+
+  /** 从一条回答里抽出代码，预填到保存片段的对话框。 */
+  function handleSaveSnippet(exchange: (typeof exchanges)[number]) {
+    const blocks = extractCodeBlocks(exchange.output);
+    const first = blocks[0];
+    const firstLine = exchange.prompt.split("\n")[0]?.trim().slice(0, 40) ?? "";
+
+    setSnippetDraft({
+      title: firstLine || `${getTaskType(exchange.task).label}结果`,
+      language: exchange.language,
+      description: "",
+      code: first?.code ?? exchange.output,
+    });
+    setSnippetOpen(true);
+  }
+
+  async function handleSnippetSubmit(draft: SnippetDraft) {
+    setSnippetPending(true);
+    try {
+      await createSnippetRequest({
+        title: draft.title,
+        language: draft.language,
+        code: draft.code,
+        description: draft.description || null,
+        // 暂不记录 sourceMessageId：实时回答此刻还没有数据库消息 id，
+        // 回填需要额外的 done 事件字段，留到任务 12 统一处理。
+        sourceMessageId: null,
+      });
+      toast.success("片段已保存，可在「代码片段」页查看");
+      setSnippetOpen(false);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "保存失败");
+    } finally {
+      setSnippetPending(false);
+    }
   }
 
   const lastExchange = exchanges.at(-1);
@@ -179,6 +228,7 @@ export function WorkspaceShell() {
             onPickExample={handlePickExample}
             onRetry={retry}
             onStop={stop}
+            onSaveSnippet={handleSaveSnippet}
           />
           <TaskComposer
             mode={mode}
@@ -214,6 +264,17 @@ export function WorkspaceShell() {
           <div className="min-h-0 flex-1">{sidebar}</div>
         </SheetContent>
       </Sheet>
+
+      {snippetOpen ? (
+        <SnippetDialog
+          open={snippetOpen}
+          mode="create"
+          initial={snippetDraft}
+          pending={snippetPending}
+          onOpenChange={setSnippetOpen}
+          onSubmit={handleSnippetSubmit}
+        />
+      ) : null}
     </div>
   );
 }

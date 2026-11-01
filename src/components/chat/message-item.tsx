@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, RefreshCw, Sparkles, Square } from "lucide-react";
+import { AlertCircle, BookmarkPlus, RefreshCw, Sparkles, Square } from "lucide-react";
 
 import { CopyButton } from "@/components/code/copy-button";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
@@ -38,11 +38,13 @@ export function MessageItem({
   exchange,
   onRetry,
   onStop,
+  onSaveSnippet,
   canRetry,
 }: {
   exchange: Exchange;
   onRetry: () => void;
   onStop: () => void;
+  onSaveSnippet: (exchange: Exchange) => void;
   canRetry: boolean;
 }) {
   const task = getTaskType(exchange.task);
@@ -142,6 +144,12 @@ export function MessageItem({
                     <Button variant="ghost" size="xs" onClick={onRetry}>
                       <RefreshCw data-icon="inline-start" />
                       重新生成
+                    </Button>
+                  ) : null}
+                  {exchange.output ? (
+                    <Button variant="ghost" size="xs" onClick={() => onSaveSnippet(exchange)}>
+                      <BookmarkPlus data-icon="inline-start" />
+                      保存片段
                     </Button>
                   ) : null}
                   {exchange.output ? <CopyButton text={exchange.output} /> : null}

@@ -40,3 +40,15 @@ export type ConversationSummary = Pick<
   ConversationRow,
   "id" | "title" | "task_type" | "language" | "last_message_at" | "created_at"
 >;
+
+export type SnippetRow = {
+  id: string;
+  owner_id: string | null;
+  title: string;
+  language: string;
+  code: string;
+  description: string | null;
+  source_message_id: string | null;
+  created_at: string;
+  updated_at: string;
+};

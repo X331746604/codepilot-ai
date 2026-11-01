@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Ellipsis, LoaderCircle, MessageSquare, Pencil, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Bookmark, Ellipsis, LoaderCircle, MessageSquare, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -183,7 +184,13 @@ export function SessionSidebar({
         )}
       </div>
 
-      <div className="shrink-0 border-t p-3">
+      <div className="shrink-0 space-y-1.5 border-t p-3">
+        <Button asChild variant="ghost" size="sm" className="w-full justify-start gap-2">
+          <Link href="/snippets">
+            <Bookmark className="size-4" />
+            代码片段
+          </Link>
+        </Button>
         <p className="text-xs text-muted-foreground">单用户模式 · 尚未做用户隔离</p>
       </div>
 
