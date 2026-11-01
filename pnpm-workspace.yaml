@@ -1,3 +1,5 @@
 allowBuilds:
   sharp: false
   unrs-resolver: false
+  # vitest 依赖 esbuild，它的 postinstall 负责链接平台二进制；不放行会导致测试跑不起来
+  esbuild: true
