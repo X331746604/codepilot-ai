@@ -74,6 +74,25 @@ export const LANGUAGE_VALUES = LANGUAGES.map((language) => language.value) as [
   ...Language[],
 ];
 
+/**
+ * 重构目标。放在 constants 而不是 schemas，是因为它同时被客户端的多选控件
+ * 和服务端的 Zod 校验使用——若放在 schemas 里，客户端会连带打包 zod。
+ */
+export const REFACTOR_GOALS = [
+  { value: "naming", label: "改善命名" },
+  { value: "split", label: "拆分函数" },
+  { value: "dedupe", label: "减少重复" },
+  { value: "readability", label: "提升可读性" },
+  { value: "performance", label: "优化性能" },
+] as const;
+
+export type RefactorGoal = (typeof REFACTOR_GOALS)[number]["value"];
+
+export const REFACTOR_GOAL_VALUES = REFACTOR_GOALS.map((goal) => goal.value) as [
+  RefactorGoal,
+  ...RefactorGoal[],
+];
+
 export function getLanguageLabel(value: string) {
   return LANGUAGES.find((language) => language.value === value)?.label ?? value;
 }

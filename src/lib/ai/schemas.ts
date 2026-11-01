@@ -7,7 +7,14 @@
 
 import { z } from "zod";
 
-import { LANGUAGE_VALUES, LIMITS, TASK_TYPE_VALUES, type TaskType } from "@/lib/constants";
+import {
+  LANGUAGE_VALUES,
+  LIMITS,
+  REFACTOR_GOAL_VALUES,
+  TASK_TYPE_VALUES,
+  type RefactorGoal,
+  type TaskType,
+} from "@/lib/constants";
 
 const languageSchema = z.enum(LANGUAGE_VALUES, { error: "不支持的编程语言" });
 
@@ -50,23 +57,9 @@ export const debugInputSchema = z.object({
   language: languageSchema,
 });
 
-export const refactorGoalValues = [
-  "naming",
-  "split",
-  "dedupe",
-  "readability",
-  "performance",
-] as const;
+export const refactorGoalValues = REFACTOR_GOAL_VALUES;
 
-export type RefactorGoal = (typeof refactorGoalValues)[number];
-
-export const REFACTOR_GOAL_LABELS: Record<RefactorGoal, string> = {
-  naming: "改善命名",
-  split: "拆分函数",
-  dedupe: "减少重复",
-  readability: "提升可读性",
-  performance: "优化性能",
-};
+export type { RefactorGoal };
 
 export const refactorInputSchema = z.object({
   code: z

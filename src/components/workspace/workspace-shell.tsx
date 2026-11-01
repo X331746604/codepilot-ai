@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Menu } from "lucide-react";
+import { Menu, Trash2 } from "lucide-react";
 
 import { Brand } from "@/components/layout/brand";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -15,11 +15,21 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ConversationPanel } from "@/components/workspace/conversation-panel";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ConversationView } from "@/components/workspace/conversation-view";
 import { ResultPanel } from "@/components/workspace/result-panel";
 import { SessionSidebar } from "@/components/workspace/session-sidebar";
 import { TaskComposer } from "@/components/workspace/task-composer";
-import { DEFAULT_LANGUAGE, DEFAULT_TASK_TYPE, type Language, type TaskType } from "@/lib/constants";
+import { useAiTask } from "@/hooks/use-ai-task";
+import {
+  DEFAULT_LANGUAGE,
+  DEFAULT_TASK_TYPE,
+  type Language,
+  type RefactorGoal,
+  type TaskType,
+} from "@/lib/constants";
+
+const DEFAULT_GOALS: RefactorGoal[] = ["naming", "split", "readability"];
 
 export function WorkspaceShell() {
   const [mode, setMode] = useState<TaskType>(DEFAULT_TASK_TYPE);
@@ -27,9 +37,11 @@ export function WorkspaceShell() {
   const [prompt, setPrompt] = useState("");
   const [errorText, setErrorText] = useState("");
   const [constraint, setConstraint] = useState("");
+  const [goals, setGoals] = useState<RefactorGoal[]>(DEFAULT_GOALS);
   const [navOpen, setNavOpen] = useState(false);
 
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const { exchanges, isStreaming, run, stop, retry, reset } = useAiTask();
 
   function handlePickExample(nextMode: TaskType, nextPrompt: string) {
     setMode(nextMode);
@@ -37,6 +49,42 @@ export function WorkspaceShell() {
     // 等 React 把新值写进 DOM 后再聚焦，否则光标会落在旧内容末尾。
     requestAnimationFrame(() => promptRef.current?.focus());
   }
+
+  /** 四类任务的请求体形状不同，统一在这里构造，组件只负责展示。 */
+  function buildRequestBody() {
+    switch (mode) {
+      case "generate":
+        return {
+          prompt: prompt.trim(),
+          language,
+          ...(constraint.trim() ? { constraint: constraint.trim() } : {}),
+        };
+      case "explain":
+        return { code: prompt, language };
+      case "debug":
+        return { code: prompt, errorText, language };
+      case "refactor":
+        return { code: prompt, language, goals };
+    }
+  }
+
+  function handleSubmit() {
+    if (isStreaming) return;
+    const display = prompt.trim();
+    if (!display) return;
+
+    void run({
+      task: mode,
+      language,
+      prompt: display,
+      requestBody: buildRequestBody(),
+    });
+
+    setPrompt("");
+    setErrorText("");
+  }
+
+  const lastExchange = exchanges.at(-1);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
@@ -59,6 +107,22 @@ export function WorkspaceShell() {
         </Badge>
 
         <div className="ml-auto flex items-center gap-1">
+          {exchanges.length > 0 ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="清空当前对话"
+                  onClick={reset}
+                  disabled={isStreaming}
+                >
+                  <Trash2 />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>清空当前对话（未保存的内容会丢失）</TooltipContent>
+            </Tooltip>
+          ) : null}
           <ThemeToggle />
         </div>
       </header>
@@ -69,7 +133,13 @@ export function WorkspaceShell() {
         </aside>
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <ConversationPanel onPickExample={handlePickExample} />
+          <ConversationView
+            exchanges={exchanges}
+            isStreaming={isStreaming}
+            onPickExample={handlePickExample}
+            onRetry={retry}
+            onStop={stop}
+          />
           <TaskComposer
             mode={mode}
             onModeChange={setMode}
@@ -81,12 +151,17 @@ export function WorkspaceShell() {
             onErrorTextChange={setErrorText}
             constraint={constraint}
             onConstraintChange={setConstraint}
+            goals={goals}
+            onGoalsChange={setGoals}
             promptRef={promptRef}
+            isStreaming={isStreaming}
+            onSubmit={handleSubmit}
+            onStop={stop}
           />
         </main>
 
         <aside className="hidden w-[22rem] shrink-0 border-l lg:block xl:w-[25rem]">
-          <ResultPanel />
+          <ResultPanel exchange={lastExchange} />
         </aside>
       </div>
 

@@ -8,9 +8,9 @@
  * 3. 用户输入放在单独的 user 消息里，不拼进系统提示，避免指令混淆。
  */
 
-import { getLanguageLabel } from "@/lib/constants";
+import { getLanguageLabel, REFACTOR_GOALS } from "@/lib/constants";
 
-import { REFACTOR_GOAL_LABELS, type DebugInput, type ExplainInput, type GenerateInput, type RefactorInput } from "./schemas";
+import type { DebugInput, ExplainInput, GenerateInput, RefactorInput } from "./schemas";
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -132,7 +132,9 @@ function buildUserMessage(request: TaskRequest): string {
     }
     case "refactor": {
       const { code, goals, language } = request.input;
-      const goalText = goals.map((goal) => REFACTOR_GOAL_LABELS[goal]).join("、");
+      const goalText = goals
+        .map((goal) => REFACTOR_GOALS.find((item) => item.value === goal)?.label ?? goal)
+        .join("、");
       return [
         `编程语言：${getLanguageLabel(language)}`,
         `重构目标：${goalText}`,

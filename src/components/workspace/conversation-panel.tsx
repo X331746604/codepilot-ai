@@ -29,7 +29,11 @@ const EXAMPLES: Array<{ mode: TaskType; label: string; prompt: string }> = [
   },
 ];
 
-export function ConversationPanel({ onPickExample }: { onPickExample: (mode: TaskType, prompt: string) => void }) {
+export function ConversationEmptyState({
+  onPickExample,
+}: {
+  onPickExample: (mode: TaskType, prompt: string) => void;
+}) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-4 py-10 text-center sm:px-6 sm:py-16">

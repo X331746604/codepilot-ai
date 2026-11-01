@@ -2,6 +2,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@plugin "@tailwindcss/typography";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -126,5 +128,100 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* ------------------------------------------------------------------
+ * 代码高亮
+ * 不引入整份 highlight.js 主题 CSS：那套主题是写死的固定色，深色模式下
+ * 反而要再覆盖一遍。这里只把 token 映射到 CSS 变量，随主题自动切换。
+ * ------------------------------------------------------------------ */
+:root {
+  --code-comment: oklch(0.55 0.02 260);
+  --code-keyword: oklch(0.48 0.19 300);
+  --code-string: oklch(0.45 0.13 150);
+  --code-number: oklch(0.52 0.14 60);
+  --code-function: oklch(0.45 0.14 250);
+  --code-type: oklch(0.48 0.11 200);
+  --code-variable: oklch(0.4 0.04 30);
+  --code-meta: oklch(0.55 0.06 20);
+}
+
+.dark {
+  --code-comment: oklch(0.63 0.02 260);
+  --code-keyword: oklch(0.78 0.14 300);
+  --code-string: oklch(0.81 0.12 150);
+  --code-number: oklch(0.83 0.12 70);
+  --code-function: oklch(0.79 0.1 240);
+  --code-type: oklch(0.81 0.09 200);
+  --code-variable: oklch(0.88 0.03 60);
+  --code-meta: oklch(0.76 0.08 20);
+}
+
+@layer components {
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--code-comment);
+    font-style: italic;
+  }
+
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-section,
+  .hljs-doctag {
+    color: var(--code-keyword);
+  }
+
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-addition,
+  .hljs-attribute,
+  .hljs-meta .hljs-string {
+    color: var(--code-string);
+  }
+
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-bullet,
+  .hljs-link {
+    color: var(--code-number);
+  }
+
+  .hljs-title,
+  .hljs-title.function_,
+  .hljs-title.class_ {
+    color: var(--code-function);
+  }
+
+  .hljs-type,
+  .hljs-built_in,
+  .hljs-selector-class,
+  .hljs-selector-id {
+    color: var(--code-type);
+  }
+
+  .hljs-variable,
+  .hljs-template-variable,
+  .hljs-params,
+  .hljs-attr {
+    color: var(--code-variable);
+  }
+
+  .hljs-meta,
+  .hljs-tag {
+    color: var(--code-meta);
+  }
+
+  .hljs-deletion {
+    color: var(--destructive);
+  }
+
+  .hljs-emphasis {
+    font-style: italic;
+  }
+
+  .hljs-strong {
+    font-weight: 600;
   }
 }
