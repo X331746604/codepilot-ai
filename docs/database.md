@@ -108,7 +108,31 @@ SUPABASE_SECRET_KEY=sb_secret_...
 
 > **安全提醒**：secret key / service_role 等同于数据库管理员权限，绕过所有 RLS。不要提交到 Git、不要加 `NEXT_PUBLIC_` 前缀、不要放进任何客户端组件。`.env.local` 已被 `.gitignore` 排除。
 
-## 6. 迁移文件的维护约定
+## 6. 本地开发必须注意：Node 不走系统代理
+
+首次执行自检时连接被重置（`ECONNRESET`），但浏览器能正常打开 Supabase 控制台。原因是：
+
+- 浏览器走的是系统代理 / 代理插件；
+- **Node 和 curl 默认都不读系统代理**，直连 `*.supabase.co` 会被阻断。
+
+解决办法是给进程显式指定代理。本机实测可用端口为 `7897`（Clash 系默认混合端口）：
+
+```bash
+# 单次执行脚本
+NODE_USE_ENV_PROXY=1 HTTPS_PROXY=http://127.0.0.1:7897 node scripts/verify-supabase.mjs
+```
+
+`NODE_USE_ENV_PROXY=1` 是 Node 22+ 提供的开关，作用是让内置 `fetch` 读取 `HTTPS_PROXY`。不加这个变量，`HTTPS_PROXY` 对 Node 完全无效（这是最容易卡住的地方）。
+
+启动开发服务器同理：
+
+```bash
+NODE_USE_ENV_PROXY=1 HTTPS_PROXY=http://127.0.0.1:7897 pnpm dev
+```
+
+**部署到 Vercel 后不需要任何代理设置**——那里是直连。这段只影响本地开发。
+
+## 7. 迁移文件的维护约定
 
 - 文件命名 `NNNN_描述.sql`，按序号执行，**不修改已执行的迁移**；
 - 每次结构变更新增一个文件，而不是改 `0001`；
