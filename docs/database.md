@@ -72,23 +72,41 @@ select $1, coalesce(max(seq), 0) + 1, $2, $3, $4, $5, $6
 
 ## 5. 接入清单（需要你操作，约 5 分钟）
 
+> **注意**：Supabase 在 2025–2026 年改版了密钥体系，**旧教程里的「Settings → API」页面已经不存在**。
+> 现在密钥统一在 **Settings → API Keys**，并分为「新版 secret key」与「旧版 service_role」两套。
+> 两者都能用，脚本对两种都做了适配。
+
 1. 打开 https://supabase.com ，用 GitHub 登录，创建新项目。
    - 区域选 **Singapore**（离国内最近）
-   - 数据库密码请自行保存好（本项目的服务端连接不直接用它）
-2. 项目创建完成后，进入 **Project Settings → API**，复制两个值：
-   - `Project URL`（形如 `https://xxxx.supabase.co`）
-   - `service_role` 密钥（在 `Project API keys` 里，标注 `secret`）
-3. 打开 **SQL Editor**，把 `supabase/migrations/0001_init.sql` 全文粘贴进去并 Run。
-4. 把这两个值发给我，或者你自己填进 `.env.local`：
+   - 数据库密码自行保存（本项目服务端不直接用它）
+2. 建表：左侧栏 **SQL Editor**（图标像命令行提示符）→ New query → 粘贴 `supabase/migrations/0001_init.sql` 全文 → **Run**。
+   - 成功标志：左侧 Table Editor 里出现 `conversations` 与 `messages` 两张表。
+3. 取密钥，二选一：
+
+   **路线 A（新版，推荐）**
+   - 左下角齿轮 **Project Settings → API Keys**
+   - 切到 **「Publishable and secret API keys」** 标签
+   - 若显示 `Create new API keys` 按钮，先点它（不会影响旧密钥）
+   - 复制 **Secret keys** 里的值，形如 `sb_secret_xxxxxxxx`
+
+   **路线 B（旧版，兼容）**
+   - 同页面切到 **「Legacy API Keys」** 标签
+   - 复制 **`service_role`** 那一行的值，形如 `eyJhbGciOi...`（一长串 JWT）
+
+4. 项目 URL：同一页面顶部，或 **Project Settings → General → Project URL**，形如 `https://abcd1234.supabase.co`。
+5. 把这两个值填进 `.env.local`（或直接发给我）：
 
 ```bash
 SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
+# 新版密钥用这个变量名：
+SUPABASE_SECRET_KEY=sb_secret_...
+# 旧版密钥用这个变量名：
+# SUPABASE_SERVICE_ROLE_KEY=eyJ...
 ```
 
-5. 我随后执行 `node scripts/verify-supabase.mjs` 做真实读写自检（写一条会话与消息、读回、删除并确认级联）。
+6. 我随后执行 `node scripts/verify-supabase.mjs` 做真实读写自检（写一条会话与消息、读回、删除并确认级联）。
 
-> **安全提醒**：`service_role` 密钥等同于数据库管理员权限，不要提交到 Git、不要贴进聊天以外的公开场合。`.env.local` 已被 `.gitignore` 排除。
+> **安全提醒**：secret key / service_role 等同于数据库管理员权限，绕过所有 RLS。不要提交到 Git、不要加 `NEXT_PUBLIC_` 前缀、不要放进任何客户端组件。`.env.local` 已被 `.gitignore` 排除。
 
 ## 6. 迁移文件的维护约定
 

@@ -31,17 +31,30 @@ function loadEnvFile(path) {
 
 const fileEnv = loadEnvFile(join(root, ".env.local"));
 const url = (process.env.SUPABASE_URL ?? fileEnv.SUPABASE_URL ?? "").replace(/\/+$/, "");
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? fileEnv.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const key =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ??
+  process.env.SUPABASE_SECRET_KEY ??
+  fileEnv.SUPABASE_SERVICE_ROLE_KEY ??
+  fileEnv.SUPABASE_SECRET_KEY ??
+  "";
 
 if (!url || !key) {
-  console.error("缺少 SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY（.env.local 或环境变量）");
+  console.error("缺少 SUPABASE_URL 或密钥（SUPABASE_SERVICE_ROLE_KEY / SUPABASE_SECRET_KEY）");
   process.exit(1);
 }
 
+/**
+ * Supabase 有两代密钥，认证方式不同：
+ * - 旧版 service_role 是 JWT（eyJ 开头）→ apikey + Authorization: Bearer 都行
+ * - 新版 secret key（sb_secret_ 开头）不是 JWT，网关只认 apikey 头；
+ *   再带 Bearer 反而会被判为无效令牌。
+ */
+const isLegacyJwt = key.startsWith("eyJ");
+
 const headers = {
   apikey: key,
-  Authorization: `Bearer ${key}`,
   "Content-Type": "application/json",
+  ...(isLegacyJwt ? { Authorization: `Bearer ${key}` } : {}),
 };
 
 const results = [];
