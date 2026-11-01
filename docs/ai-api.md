@@ -30,22 +30,21 @@
 { "code": "1–12000 字", "goals": ["naming", "split"], "language": "typescript" }
 ```
 
-### 多轮上下文 `history`（四个接口均支持，可选）
+### 会话绑定 `conversationId`（四个接口均支持，可选）
 
 ```jsonc
 {
   "prompt": "把它改成支持 async/await",
   "language": "typescript",
-  "history": [
-    { "role": "user", "content": "写一个读取配置文件的函数" },
-    { "role": "assistant", "content": "## 思路……（上一轮回答原文）" }
-  ]
+  "conversationId": "d6c89d9a-2b04-4c93-a2c3-c128966929ef"
 }
 ```
 
-- `history` 最多 20 条，单条 ≤24000 字；校验通过后服务端仍会按下方规则二次裁剪。
-- 顺序必须是时间正序，最后一条是离本轮最近的历史。
-- 不传或传空数组即单轮请求。
+- **带上它**：服务端从数据库读取该会话的历史消息、写入本轮用户消息与助手回答。
+- **不带或为 null**：视为新会话，由服务端创建并在 `meta.conversationId` 中返回。
+- 会话不存在时返回 `404 NOT_FOUND`，不会静默创建新会话——否则用户会以为在续写，实际开了新对话。
+
+> 早期版本由客户端上传 `history` 数组。接入数据库后该字段已移除：历史必须是服务端可核验的，不能由客户端声明。
 
 ### 上下文裁剪规则（服务端强制）
 
@@ -66,7 +65,7 @@
 
 | 事件 | 载荷 | 说明 |
 |---|---|---|
-| `meta` | `{ requestId, task, model, context: { messages, truncated } }` | 流开始；`context.messages` 为实际带入的历史条数 |
+| `meta` | `{ requestId, task, model, conversationId, context: { messages, truncated } }` | 流开始；`conversationId` 为本次使用的会话（新会话时由服务端创建） |
 | `delta` | `{ text }` | 增量文本，直接追加渲染 |
 | `done` | `{ usage, model, finishReason }` | 结束；`usage` 为真实 token 用量，可能为 `null` |
 | `error` | `{ error: { code, message, retryable } }` | 出错；之后流即结束 |
@@ -74,12 +73,25 @@
 示例：
 
 ```
-data: {"type":"meta","requestId":"...","task":"generate","model":"qwen-plus","context":{"messages":4,"truncated":false}}
+data: {"type":"meta","requestId":"...","task":"generate","model":"qwen-plus","conversationId":"d6c89d9a-...","context":{"messages":4,"truncated":false}}
 
 data: {"type":"delta","text":"## 思路"}
 
 data: {"type":"done","usage":{"promptTokens":304,"completionTokens":141,"totalTokens":445},"model":"qwen-plus","finishReason":"stop"}
 ```
+
+## 3.5 会话接口
+
+| 方法 + 路径 | 说明 | 关键约束 |
+|---|---|---|
+| `GET /api/conversations?limit=20` | 会话列表，按 `last_message_at` 倒序 | limit 1–50 |
+| `POST /api/conversations` | 新建会话 `{ taskType, language, title? }` | 返回 201 |
+| `GET /api/conversations/[id]` | 单个会话 | 不存在 → 404 |
+| `PATCH /api/conversations/[id]` | 重命名 `{ title }` | 1–60 字，空标题 → 400 |
+| `DELETE /api/conversations/[id]` | 删除会话（消息级联删除） | 204 |
+| `GET /api/conversations/[id]/messages` | 会话 + 全部消息（按 seq 升序） | 不存在 → 404 |
+
+数据库错误对外统一返回 `500 DB_ERROR` 与中性文案，原始 PostgREST 信息只进服务端日志。
 
 ## 4. 失败响应（普通 JSON，非流式）
 

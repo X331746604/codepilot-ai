@@ -19,6 +19,8 @@ export type StreamMeta = {
   requestId: string;
   task: string;
   model: string;
+  /** 服务端创建或使用的会话 ID；首轮请求时由服务端生成 */
+  conversationId?: string;
   /** 服务端实际带入的历史上下文；truncated 为真时界面需要提示 */
   context?: { messages: number; truncated: boolean };
 };
@@ -154,6 +156,7 @@ export async function streamAiTask({
           model?: string;
           requestId?: string;
           task?: string;
+          conversationId?: string;
           context?: { messages: number; truncated: boolean };
           error?: StreamError;
         };
@@ -164,6 +167,7 @@ export async function streamAiTask({
               requestId: payload.requestId ?? "",
               task: payload.task ?? task,
               model: payload.model ?? "",
+              conversationId: payload.conversationId,
               context: payload.context,
             };
             onMeta?.(meta);

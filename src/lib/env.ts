@@ -50,3 +50,27 @@ export function readAiConfig(): AiConfigResult {
     },
   };
 }
+
+export type SupabaseConfig = { url: string; key: string };
+
+export type SupabaseConfigResult =
+  | { ok: true; config: SupabaseConfig }
+  | { ok: false; missing: string[] };
+
+/**
+ * 数据库凭据。
+ * 兼容 Supabase 的两代密钥：新版 sb_secret_* 与旧版 service_role（JWT）。
+ * 两者都拥有绕过 RLS 的权限，因此只允许在服务端读取。
+ */
+export function readSupabaseConfig(): SupabaseConfigResult {
+  const url = (process.env.SUPABASE_URL?.trim() ?? "").replace(/\/+$/, "");
+  const key = (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+
+  const missing: string[] = [];
+  if (!/^https?:\/\//.test(url)) missing.push("SUPABASE_URL");
+  if (!key) missing.push("SUPABASE_SECRET_KEY");
+
+  if (missing.length > 0) return { ok: false, missing };
+
+  return { ok: true, config: { url, key } };
+}

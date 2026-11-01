@@ -21,6 +21,7 @@ import { ResultPanel } from "@/components/workspace/result-panel";
 import { SessionSidebar } from "@/components/workspace/session-sidebar";
 import { TaskComposer } from "@/components/workspace/task-composer";
 import { useAiTask } from "@/hooks/use-ai-task";
+import { useConversations } from "@/hooks/use-conversations";
 import {
   DEFAULT_LANGUAGE,
   DEFAULT_TASK_TYPE,
@@ -30,8 +31,6 @@ import {
 } from "@/lib/constants";
 
 const DEFAULT_GOALS: RefactorGoal[] = ["naming", "split", "readability"];
-
-type HistoryItem = { role: "user" | "assistant"; content: string };
 
 export function WorkspaceShell() {
   const [mode, setMode] = useState<TaskType>(DEFAULT_TASK_TYPE);
@@ -43,7 +42,9 @@ export function WorkspaceShell() {
   const [navOpen, setNavOpen] = useState(false);
 
   const promptRef = useRef<HTMLTextAreaElement>(null);
-  const { exchanges, isStreaming, run, stop, retry, reset } = useAiTask();
+  const { exchanges, isStreaming, conversationId, run, stop, retry, reset, openConversation } =
+    useAiTask();
+  const conversations = useConversations();
 
   function handlePickExample(nextMode: TaskType, nextPrompt: string) {
     setMode(nextMode);
@@ -52,38 +53,21 @@ export function WorkspaceShell() {
     requestAnimationFrame(() => promptRef.current?.focus());
   }
 
-  /**
-   * 把当前对话压成历史消息。
-   * 客户端只做粗裁（最近 12 条），精确的预算裁剪切在服务端，避免两处规则不一致。
-   */
-  function buildHistory(): HistoryItem[] {
-    const items: HistoryItem[] = [];
-    for (const exchange of exchanges) {
-      if (!exchange.output.trim()) continue;
-      items.push({ role: "user", content: exchange.prompt });
-      items.push({ role: "assistant", content: exchange.output });
-    }
-    return items.slice(-12);
-  }
-
   /** 四类任务的请求体形状不同，统一在这里构造，组件只负责展示。 */
   function buildRequestBody() {
-    const history = buildHistory();
-
     switch (mode) {
       case "generate":
         return {
           prompt: prompt.trim(),
           language,
-          history,
           ...(constraint.trim() ? { constraint: constraint.trim() } : {}),
         };
       case "explain":
-        return { code: prompt, language, history };
+        return { code: prompt, language };
       case "debug":
-        return { code: prompt, errorText, language, history };
+        return { code: prompt, errorText, language };
       case "refactor":
-        return { code: prompt, language, goals, history };
+        return { code: prompt, language, goals };
     }
   }
 
@@ -97,13 +81,48 @@ export function WorkspaceShell() {
       language,
       prompt: display,
       requestBody: buildRequestBody(),
+    }).then(() => {
+      // 首轮会创建会话、后续轮会更新 last_message_at，两种情况侧栏都要刷新
+      void conversations.refresh();
     });
 
     setPrompt("");
     setErrorText("");
   }
 
+  function handleSelectConversation(id: string) {
+    setNavOpen(false);
+    if (id === conversationId) return;
+    void openConversation(id);
+  }
+
+  function handleNewConversation() {
+    setNavOpen(false);
+    reset();
+    setPrompt("");
+    setErrorText("");
+  }
+
+  async function handleDeleteConversation(id: string) {
+    await conversations.remove(id);
+    // 删掉的正是当前打开的会话时，清空工作区
+    if (id === conversationId) reset();
+  }
+
   const lastExchange = exchanges.at(-1);
+
+  const sidebar = (
+    <SessionSidebar
+      items={conversations.items}
+      isLoading={conversations.isLoading}
+      error={conversations.error}
+      activeId={conversationId}
+      onSelect={handleSelectConversation}
+      onNew={handleNewConversation}
+      onRename={conversations.rename}
+      onDelete={handleDeleteConversation}
+    />
+  );
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
@@ -120,7 +139,9 @@ export function WorkspaceShell() {
 
         <Brand />
         <Separator orientation="vertical" className="mx-1 hidden h-5 sm:block" />
-        <span className="hidden text-sm text-muted-foreground sm:inline">工作台</span>
+        <span className="hidden max-w-[14rem] truncate text-sm text-muted-foreground sm:inline">
+          {conversations.items.find((item) => item.id === conversationId)?.title ?? "工作台"}
+        </span>
         <Badge variant="outline" className="ml-1 hidden font-normal sm:inline-flex">
           单用户模式
         </Badge>
@@ -132,14 +153,14 @@ export function WorkspaceShell() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="清空当前对话"
-                  onClick={reset}
+                  aria-label="清空当前视图"
+                  onClick={handleNewConversation}
                   disabled={isStreaming}
                 >
                   <Trash2 />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>清空当前对话（未保存的内容会丢失）</TooltipContent>
+              <TooltipContent>清空当前视图，开始新会话</TooltipContent>
             </Tooltip>
           ) : null}
           <ThemeToggle />
@@ -148,7 +169,7 @@ export function WorkspaceShell() {
 
       <div className="flex min-h-0 flex-1">
         <aside className="hidden min-h-0 w-60 shrink-0 overflow-hidden border-r md:block lg:w-64">
-          <SessionSidebar />
+          {sidebar}
         </aside>
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -190,9 +211,7 @@ export function WorkspaceShell() {
             <SheetTitle className="text-sm">会话</SheetTitle>
             <SheetDescription className="sr-only">会话列表与历史记录</SheetDescription>
           </SheetHeader>
-          <div className="min-h-0 flex-1">
-            <SessionSidebar />
-          </div>
+          <div className="min-h-0 flex-1">{sidebar}</div>
         </SheetContent>
       </Sheet>
     </div>

@@ -1,11 +1,23 @@
 /**
- * 四个 AI 路由共用同一套编排逻辑：限流 → 配置 → 解析 → 校验 → 组装 → 流式转发 → 记日志。
- * 每个 route.ts 只是 `export const POST = createAiRoute("generate")`，避免四份重复代码。
+ * 四个 AI 路由共用同一套编排逻辑：
+ * 限流 → 配置 → 解析 → 校验 → 定位会话 → 读历史 → 落用户消息 → 流式转发 → 落助手消息 → 记日志。
+ *
+ * 持久化放在这里而不是客户端，是为了让"数据库里的记录"成为唯一事实来源：
+ * 客户端刷新、换标签页、甚至伪造请求，都不会让历史与实际调用脱节。
  */
 
-import type { TaskType } from "@/lib/constants";
+import { CONTEXT_WINDOW, type TaskType } from "@/lib/constants";
+import {
+  appendMessage,
+  createConversation,
+  getConversation,
+  recentMessages,
+  titleFromFirstPrompt,
+} from "@/lib/db/conversations";
+import { dbErrorResponse } from "@/lib/db/http";
 import { readAiConfig } from "@/lib/env";
 
+import type { HistoryMessage } from "./context";
 import { toErrorPayload, type AiErrorCode } from "./errors";
 import { buildMessages, type TaskRequest } from "./prompts";
 import { streamCompletion, type CallMetrics, type TokenUsage } from "./provider";
@@ -23,8 +35,8 @@ import { logAiUsage, type AiCallStatus } from "./usage";
 
 /**
  * 请求体上限。注意 `String.length` 计的是 UTF-16 码元而不是字节，
- * 所以这个阈值约等于"字符数"。启用多轮后，最大组合（12000 字本轮输入
- * + 24000 字历史 + JSON 转义）约 40k 字符，留出余量取 160k。
+ * 所以这个阈值约等于"字符数"。历史改由服务端读取后，请求体只含本轮输入，
+ * 保留 160k 是给大段代码留余量。
  */
 const MAX_BODY_BYTES = 160 * 1024;
 
@@ -60,6 +72,22 @@ function toTaskRequest(task: TaskType, input: unknown): TaskRequest {
       return { task, input: input as DebugInput };
     case "refactor":
       return { task, input: input as RefactorInput };
+  }
+}
+
+/**
+ * 取"用户真正写下的内容"作为会话标题来源。
+ * 不能用拼装后的消息：那里面带着「编程语言：…」「需求：…」这类模板前缀，
+ * 截断后标题会变成 "编程语言：JavaScript 需求：写…"，既难看也无信息量。
+ */
+function summarizeInput(request: TaskRequest): string {
+  switch (request.task) {
+    case "generate":
+      return request.input.prompt;
+    case "explain":
+    case "debug":
+    case "refactor":
+      return request.input.code;
   }
 }
 
@@ -114,10 +142,50 @@ export function createAiRoute(task: TaskType) {
       });
     }
 
-    const { messages, context } = buildMessages(
-      toTaskRequest(task, parsed.data),
-      parsed.data.history ?? [],
-    );
+    // ---- 会话与历史（数据库为唯一来源）----
+    let conversationId: string;
+    let history: HistoryMessage[] = [];
+
+    try {
+      if (parsed.data.conversationId) {
+        const existing = await getConversation(parsed.data.conversationId);
+        if (!existing) return jsonError(404, "NOT_FOUND", "会话不存在或已被删除");
+        conversationId = existing.id;
+
+        // 取历史必须在写入本轮用户消息之前，否则历史里会多出一条重复的当前输入
+        const rows = await recentMessages(conversationId, CONTEXT_WINDOW.maxMessages);
+        history = rows.map((row) => ({ role: row.role, content: row.content }));
+      } else {
+        const created = await createConversation({
+          taskType: task,
+          language: parsed.data.language,
+        });
+        conversationId = created.id;
+      }
+    } catch (error) {
+      return dbErrorResponse(error);
+    }
+
+    const taskRequest = toTaskRequest(task, parsed.data);
+    const { messages, context } = buildMessages(taskRequest, history);
+    const userInput = summarizeInput(taskRequest);
+
+    try {
+      await appendMessage({
+        conversationId,
+        role: "user",
+        // 存"用户原话"而不是拼装后的模型提示词：刷新后气泡里应当还是自己写的那句话，
+        // 而不是「编程语言：TypeScript 需求：…」这种模板文本。
+        content: userInput,
+        taskType: task,
+        language: parsed.data.language,
+      });
+      // 首条消息写入后把「新会话」替换成内容摘要；非首条时该更新不影响任何行
+      await titleFromFirstPrompt(conversationId, userInput);
+    } catch (error) {
+      return dbErrorResponse(error);
+    }
+
     const metrics: CallMetrics = { attempts: 0 };
     const encoder = new TextEncoder();
 
@@ -125,7 +193,7 @@ export function createAiRoute(task: TaskType) {
     let errorCode: AiErrorCode | undefined;
     let usage: TokenUsage | null = null;
     let model = config.model;
-    let outputChars = 0;
+    let assistantText = "";
     let finished = false;
 
     const stream = new ReadableStream<Uint8Array>({
@@ -147,6 +215,7 @@ export function createAiRoute(task: TaskType) {
           requestId,
           task,
           model: config.model,
+          conversationId,
           context: { messages: context.messages, truncated: context.truncated },
         });
 
@@ -155,7 +224,7 @@ export function createAiRoute(task: TaskType) {
             signal: request.signal,
             metrics,
           })) {
-            if (event.type === "delta") outputChars += event.text.length;
+            if (event.type === "delta") assistantText += event.text;
             if (event.type === "done") {
               usage = event.usage;
               model = event.model || model;
@@ -178,18 +247,53 @@ export function createAiRoute(task: TaskType) {
             finished = true;
             controller.close();
           }
+
+          const latencyMs = Date.now() - startedAt;
+
+          // 有内容才落库：完全失败（一个字都没生成）时保留一条空消息没有价值
+          if (assistantText.length > 0) {
+            try {
+              await appendMessage({
+                conversationId,
+                role: "assistant",
+                content: assistantText,
+                taskType: task,
+                language: parsed.data.language,
+                status: status === "ok" ? "ok" : "partial",
+                errorCategory: errorCode ?? null,
+                usage: usage
+                  ? {
+                      promptTokens: usage.promptTokens,
+                      completionTokens: usage.completionTokens,
+                      totalTokens: usage.totalTokens,
+                    }
+                  : null,
+                latencyMs,
+              });
+            } catch (error) {
+              // 落库失败不能让已经返回给用户的内容变成错误，只记录
+              console.error(
+                JSON.stringify({
+                  scope: "ai.persist_failed",
+                  requestId,
+                  message: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+                }),
+              );
+            }
+          }
+
           logAiUsage({
             requestId,
             task,
             model,
             status,
             errorCode,
-            latencyMs: Date.now() - startedAt,
+            latencyMs,
             attempts: metrics.attempts,
             promptTokens: usage?.promptTokens ?? null,
             completionTokens: usage?.completionTokens ?? null,
             totalTokens: usage?.totalTokens ?? null,
-            outputChars,
+            outputChars: assistantText.length,
             contextMessages: context.messages,
             contextTruncated: context.truncated,
           });

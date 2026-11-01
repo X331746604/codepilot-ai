@@ -5,11 +5,27 @@
 | 项 | 状态 |
 |---|---|
 | Schema 设计 | ✅ 完成，见 `supabase/migrations/0001_init.sql` |
-| 建表 SQL 可执行性 | ⏳ 待在有凭据后实际执行 |
-| 数据访问层（API Route / 仓储） | ⏳ 未开始（等数据库可连通） |
-| UI 接入（侧栏会话列表） | ⏳ 未开始 |
+| 建表 SQL 执行 | ✅ 已在真实 Supabase 项目执行 |
+| 连通性自检 | ✅ `node scripts/verify-supabase.mjs` 8/8 通过 |
+| 数据访问层 | ✅ `src/lib/db/*` |
+| 会话接口 | ✅ `/api/conversations`（列表/新建/重命名/删除/消息） |
+| UI 接入（侧栏会话列表） | ✅ 新建 / 切换 / 重命名 / 删除 + 刷新恢复 |
+| 用户隔离（RLS 策略） | ⏳ 任务 13 |
 
-**为什么不先写代码**：项目规则要求「涉及数据库的功能必须实际验证数据读写」。本机没有 Supabase 凭据、没有 Docker、没有本地 Postgres，任何数据层代码写完都无法验证，只能靠推测——一旦有字段或权限问题，排查成本会远高于先建表再写代码。
+### 持久化的职责划分
+
+**服务端写入，客户端只读**：
+
+```
+POST /api/ai/*  ──▶ 定位或创建会话
+                ──▶ 读历史（数据库）
+                ──▶ 写入用户消息
+                ──▶ 流式调用模型
+                ──▶ 写入助手消息（内容 + 真实 usage + 耗时）
+                ──▶ meta 事件里返回 conversationId
+```
+
+这样设计的原因：客户端可以在中途刷新、断网、甚至伪造请求，而数据库里的记录始终与应用实际看到的历史一致。**历史不再由客户端声明**。
 
 ## 2. 表结构概要
 
@@ -63,6 +79,12 @@ select $1, coalesce(max(seq), 0) + 1, $2, $3, $4, $5, $6
   from public.messages
  where conversation_id = $1;
 ```
+
+### 当前实现的取舍
+
+`src/lib/db/conversations.ts` 的 `appendMessage` 采用「先查 max(seq) 再插入」的两步写法，因为 Supabase JS 客户端无法直接执行上面的 SQL。并发写同一条会话时，唯一约束会拒绝其中一个请求，代码对 `23505` 做最多 3 次重试。
+
+单用户场景下这足够；如果将来并发上升，正确做法是在数据库里加一个函数，用 `update conversations set message_count = message_count + 1 returning message_count` 分配序号——行锁天然串行化，不需要重试。
 
 ## 4. RLS 的当前语义
 
