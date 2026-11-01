@@ -30,6 +30,33 @@
 { "code": "1–12000 字", "goals": ["naming", "split"], "language": "typescript" }
 ```
 
+### 多轮上下文 `history`（四个接口均支持，可选）
+
+```jsonc
+{
+  "prompt": "把它改成支持 async/await",
+  "language": "typescript",
+  "history": [
+    { "role": "user", "content": "写一个读取配置文件的函数" },
+    { "role": "assistant", "content": "## 思路……（上一轮回答原文）" }
+  ]
+}
+```
+
+- `history` 最多 20 条，单条 ≤24000 字；校验通过后服务端仍会按下方规则二次裁剪。
+- 顺序必须是时间正序，最后一条是离本轮最近的历史。
+- 不传或传空数组即单轮请求。
+
+### 上下文裁剪规则（服务端强制）
+
+| 规则 | 值 |
+|---|---|
+| 最多保留历史条数 | 10 条（最近的） |
+| 单条最大字符 | 4000（超出截断并补 `…`） |
+| 历史总字符预算 | 24000（超预算从最旧开始丢弃） |
+
+发生任何裁剪时，`meta.context.truncated` 为 `true`，客户端应提示用户「早期内容未参与本轮」。
+
 `language` 取值：`typescript | javascript | python | java | go | sql | html-css | other`
 `goals` 取值：`naming | split | dedupe | readability | performance`，至少一项。
 
@@ -39,7 +66,7 @@
 
 | 事件 | 载荷 | 说明 |
 |---|---|---|
-| `meta` | `{ requestId, task, model }` | 流开始，前端可据此记录 requestId |
+| `meta` | `{ requestId, task, model, context: { messages, truncated } }` | 流开始；`context.messages` 为实际带入的历史条数 |
 | `delta` | `{ text }` | 增量文本，直接追加渲染 |
 | `done` | `{ usage, model, finishReason }` | 结束；`usage` 为真实 token 用量，可能为 `null` |
 | `error` | `{ error: { code, message, retryable } }` | 出错；之后流即结束 |
@@ -47,7 +74,7 @@
 示例：
 
 ```
-data: {"type":"meta","requestId":"...","task":"generate","model":"qwen-plus"}
+data: {"type":"meta","requestId":"...","task":"generate","model":"qwen-plus","context":{"messages":4,"truncated":false}}
 
 data: {"type":"delta","text":"## 思路"}
 
@@ -83,3 +110,5 @@ data: {"type":"done","usage":{"promptTokens":304,"completionTokens":141,"totalTo
 
 - 限流为进程内内存计数，多实例部署时每个实例独立计数，真实上限 = 配置值 × 实例数。
 - 仅实现流式模式。若后续接入不支持 SSE 的供应商，需要在 `provider.ts` 增加非流式分支，并让前端识别 `application/json` 响应。
+- 上下文裁剪按**字符数**而非 token 数估算。中文与代码的 token 密度差异较大，24000 字符对应的 token 数在 8k–20k 之间波动，因此它是"成本护栏"而不是精确预算。
+- 历史消息由客户端提供，服务端不做完整性校验（无法验证 assistant 消息是否真由本服务生成）。接入用户认证与数据库后，历史应从数据库读取。

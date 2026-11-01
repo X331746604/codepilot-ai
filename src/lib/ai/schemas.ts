@@ -18,6 +18,25 @@ import {
 
 const languageSchema = z.enum(LANGUAGE_VALUES, { error: "不支持的编程语言" });
 
+/**
+ * 历史消息。客户端只发最近若干轮，服务端仍会按 CONTEXT_WINDOW 二次裁剪，
+ * 这里只做"别把请求体撑爆"的粗粒度限制。
+ */
+export const historyMessageSchema = z.object({
+  role: z.enum(["user", "assistant"], { error: "历史消息角色只能是 user 或 assistant" }),
+  content: z
+    .string()
+    .min(1, "历史消息不能为空")
+    .max(LIMITS.code * 2, `单条历史消息不能超过 ${LIMITS.code * 2} 字`),
+});
+
+export const historySchema = z
+  .array(historyMessageSchema)
+  .max(20, "历史消息最多 20 条")
+  .optional();
+
+export type HistoryMessageInput = z.infer<typeof historyMessageSchema>;
+
 export const generateInputSchema = z.object({
   prompt: z
     .string()
@@ -25,6 +44,7 @@ export const generateInputSchema = z.object({
     .min(1, "请先描述你的需求")
     .max(LIMITS.prompt, `需求描述不能超过 ${LIMITS.prompt} 字`),
   language: languageSchema,
+  history: historySchema,
   constraint: z
     .string()
     .trim()
@@ -39,6 +59,7 @@ export const explainInputSchema = z.object({
     .min(1, "请粘贴需要解释的代码")
     .max(LIMITS.code, `代码不能超过 ${LIMITS.code} 字`),
   language: languageSchema,
+  history: historySchema,
   focus: z.string().trim().max(200, "关注点描述过长").optional(),
 });
 
@@ -55,6 +76,7 @@ export const debugInputSchema = z.object({
     .max(LIMITS.errorText, `报错信息不能超过 ${LIMITS.errorText} 字`),
   environment: z.string().trim().max(200, "运行环境描述过长").optional(),
   language: languageSchema,
+  history: historySchema,
 });
 
 export const refactorGoalValues = REFACTOR_GOAL_VALUES;
@@ -72,6 +94,7 @@ export const refactorInputSchema = z.object({
     .min(1, "至少选择一个重构目标")
     .max(refactorGoalValues.length),
   language: languageSchema,
+  history: historySchema,
 });
 
 export type GenerateInput = z.infer<typeof generateInputSchema>;

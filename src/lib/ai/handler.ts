@@ -21,8 +21,12 @@ import {
 } from "./schemas";
 import { logAiUsage, type AiCallStatus } from "./usage";
 
-/** 请求体上限：四个字段加起来也远小于这个值，超出基本可以判定是异常请求。 */
-const MAX_BODY_BYTES = 64 * 1024;
+/**
+ * 请求体上限。注意 `String.length` 计的是 UTF-16 码元而不是字节，
+ * 所以这个阈值约等于"字符数"。启用多轮后，最大组合（12000 字本轮输入
+ * + 24000 字历史 + JSON 转义）约 40k 字符，留出余量取 160k。
+ */
+const MAX_BODY_BYTES = 160 * 1024;
 
 type JsonErrorOptions = {
   issues?: FieldIssue[];
@@ -110,7 +114,10 @@ export function createAiRoute(task: TaskType) {
       });
     }
 
-    const messages = buildMessages(toTaskRequest(task, parsed.data));
+    const { messages, context } = buildMessages(
+      toTaskRequest(task, parsed.data),
+      parsed.data.history ?? [],
+    );
     const metrics: CallMetrics = { attempts: 0 };
     const encoder = new TextEncoder();
 
@@ -135,7 +142,13 @@ export function createAiRoute(task: TaskType) {
           }
         };
 
-        send({ type: "meta", requestId, task, model: config.model });
+        send({
+          type: "meta",
+          requestId,
+          task,
+          model: config.model,
+          context: { messages: context.messages, truncated: context.truncated },
+        });
 
         try {
           for await (const event of streamCompletion(config, messages, {
@@ -177,6 +190,8 @@ export function createAiRoute(task: TaskType) {
             completionTokens: usage?.completionTokens ?? null,
             totalTokens: usage?.totalTokens ?? null,
             outputChars,
+            contextMessages: context.messages,
+            contextTruncated: context.truncated,
           });
         }
       },

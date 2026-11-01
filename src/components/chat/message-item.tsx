@@ -70,6 +70,11 @@ export function MessageItem({
               已停止
             </Badge>
           ) : null}
+          {exchange.context?.truncated ? (
+            <Badge variant="outline" className="font-normal">
+              上下文已裁剪 · 保留 {exchange.context.messages} 条
+            </Badge>
+          ) : null}
         </div>
 
         <div className="rounded-lg border bg-card p-3">

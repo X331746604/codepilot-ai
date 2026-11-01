@@ -24,6 +24,10 @@ export type AiUsageLog = {
   totalTokens: number | null;
   /** 输出字符数，用于粗略估算"这次回答有多长"，不含内容本身 */
   outputChars: number;
+  /** 本轮实际带入的历史消息条数 */
+  contextMessages: number;
+  /** 历史是否被裁剪（条数 / 单条长度 / 总量任一触发） */
+  contextTruncated: boolean;
 };
 
 export function logAiUsage(entry: AiUsageLog): void {

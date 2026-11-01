@@ -19,6 +19,8 @@ export type StreamMeta = {
   requestId: string;
   task: string;
   model: string;
+  /** 服务端实际带入的历史上下文；truncated 为真时界面需要提示 */
+  context?: { messages: number; truncated: boolean };
 };
 
 export type StreamError = {
@@ -152,6 +154,7 @@ export async function streamAiTask({
           model?: string;
           requestId?: string;
           task?: string;
+          context?: { messages: number; truncated: boolean };
           error?: StreamError;
         };
 
@@ -161,6 +164,7 @@ export async function streamAiTask({
               requestId: payload.requestId ?? "",
               task: payload.task ?? task,
               model: payload.model ?? "",
+              context: payload.context,
             };
             onMeta?.(meta);
             break;

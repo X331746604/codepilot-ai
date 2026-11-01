@@ -31,6 +31,8 @@ import {
 
 const DEFAULT_GOALS: RefactorGoal[] = ["naming", "split", "readability"];
 
+type HistoryItem = { role: "user" | "assistant"; content: string };
+
 export function WorkspaceShell() {
   const [mode, setMode] = useState<TaskType>(DEFAULT_TASK_TYPE);
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
@@ -50,21 +52,38 @@ export function WorkspaceShell() {
     requestAnimationFrame(() => promptRef.current?.focus());
   }
 
+  /**
+   * 把当前对话压成历史消息。
+   * 客户端只做粗裁（最近 12 条），精确的预算裁剪切在服务端，避免两处规则不一致。
+   */
+  function buildHistory(): HistoryItem[] {
+    const items: HistoryItem[] = [];
+    for (const exchange of exchanges) {
+      if (!exchange.output.trim()) continue;
+      items.push({ role: "user", content: exchange.prompt });
+      items.push({ role: "assistant", content: exchange.output });
+    }
+    return items.slice(-12);
+  }
+
   /** 四类任务的请求体形状不同，统一在这里构造，组件只负责展示。 */
   function buildRequestBody() {
+    const history = buildHistory();
+
     switch (mode) {
       case "generate":
         return {
           prompt: prompt.trim(),
           language,
+          history,
           ...(constraint.trim() ? { constraint: constraint.trim() } : {}),
         };
       case "explain":
-        return { code: prompt, language };
+        return { code: prompt, language, history };
       case "debug":
-        return { code: prompt, errorText, language };
+        return { code: prompt, errorText, language, history };
       case "refactor":
-        return { code: prompt, language, goals };
+        return { code: prompt, language, goals, history };
     }
   }
 

@@ -2,8 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 
-import { streamAiTask, type StreamError, type StreamUsage } from "@/lib/ai-client/stream";
-import type { Language, TaskType } from "@/lib/constants";
+import { streamAiTask, type StreamError, type StreamUsage } from "@/lib/ai-client/stream";import type { Language, TaskType } from "@/lib/constants";
 
 export type ExchangeStatus = "streaming" | "done" | "error" | "canceled";
 
@@ -21,6 +20,8 @@ export type Exchange = {
   usage: StreamUsage | null;
   model?: string;
   latencyMs?: number;
+  /** 服务端返回的上下文使用情况，truncated 为真时界面提示已裁剪 */
+  context?: { messages: number; truncated: boolean };
   createdAt: number;
 };
 
@@ -79,6 +80,12 @@ export function useAiTask(): UseAiTask {
         task: input.task,
         body: input.requestBody,
         signal: controller.signal,
+        onMeta: (meta) =>
+          patch(id, (item) => ({
+            ...item,
+            context: meta.context,
+            model: meta.model || item.model,
+          })),
         onDelta: (text) => patch(id, (item) => ({ ...item, output: item.output + text })),
       });
 

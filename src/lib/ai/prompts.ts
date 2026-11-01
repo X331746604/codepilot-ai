@@ -10,6 +10,7 @@
 
 import { getLanguageLabel, REFACTOR_GOALS } from "@/lib/constants";
 
+import { trimContext, type HistoryMessage } from "./context";
 import type { DebugInput, ExplainInput, GenerateInput, RefactorInput } from "./schemas";
 
 export type ChatMessage = {
@@ -147,9 +148,15 @@ function buildUserMessage(request: TaskRequest): string {
   }
 }
 
-export function buildMessages(request: TaskRequest): ChatMessage[] {
-  return [
-    { role: "system", content: SYSTEM_PROMPTS[request.task] },
-    { role: "user", content: buildUserMessage(request) },
-  ];
+export function buildMessages(request: TaskRequest, history: readonly HistoryMessage[] = []) {
+  const { messages: past, info } = trimContext(history);
+
+  return {
+    messages: [
+      { role: "system", content: SYSTEM_PROMPTS[request.task] },
+      ...past,
+      { role: "user", content: buildUserMessage(request) },
+    ] satisfies ChatMessage[],
+    context: info,
+  };
 }
