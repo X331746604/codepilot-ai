@@ -7,6 +7,8 @@
 
 import { getDb } from "./client";
 import { DbError } from "./conversations";
+import { cursorFilter, encodeCursor, type Cursor } from "./cursor";
+import { sanitizeSearch } from "./search";
 import type { SnippetRow } from "./types";
 
 type PostgrestLikeError = { message: string; code?: string; details?: string | null };
@@ -16,17 +18,6 @@ function raise(operation: string, error: PostgrestLikeError | null): never {
     `${operation}失败：${error?.message ?? "未知错误"}${error?.details ? `（${error.details}）` : ""}`,
     error?.code ?? "DB_ERROR",
   );
-}
-
-/**
- * 清理搜索词。
- *
- * PostgREST 的 `or()` 用逗号和括号分隔条件，搜索词里出现这些字符会把过滤器
- * 拆坏；`%` 与 `_` 是 LIKE 通配符，用户输入的应该被当作字面量。
- * 直接剔除而不是转义，是因为这里只需要"能搜到大概"，不需要精确匹配语义。
- */
-export function sanitizeSearch(raw: string): string {
-  return raw.replace(/[(),%_\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
 }
 
 export async function createSnippet(input: {
@@ -52,13 +43,27 @@ export async function createSnippet(input: {
   return data as SnippetRow;
 }
 
+export type SnippetPage = {
+  rows: SnippetRow[];
+  /** 为 null 表示已经没有下一页 */
+  nextCursor: string | null;
+};
+
 export async function listSnippets(options: {
   q?: string;
   language?: string;
   limit?: number;
-}): Promise<SnippetRow[]> {
+  cursor?: Cursor | null;
+}): Promise<SnippetPage> {
   const limit = options.limit ?? 30;
-  let query = getDb().from("snippets").select("*").order("created_at", { ascending: false }).limit(limit);
+
+  // 多取一条判断是否有下一页，见 listConversations 的同款说明
+  let query = getDb()
+    .from("snippets")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit + 1);
 
   if (options.language) query = query.eq("language", options.language);
 
@@ -68,9 +73,23 @@ export async function listSnippets(options: {
     query = query.or(`title.ilike.%${keyword}%,code.ilike.%${keyword}%`);
   }
 
+  if (options.cursor) {
+    query = query.or(cursorFilter("created_at", options.cursor));
+  }
+
   const { data, error } = await query;
   if (error) raise("读取片段列表", error);
-  return (data ?? []) as SnippetRow[];
+
+  const fetched = (data ?? []) as SnippetRow[];
+  const hasMore = fetched.length > limit;
+  const rows = hasMore ? fetched.slice(0, limit) : fetched;
+  const last = rows.at(-1);
+
+  return {
+    rows,
+    nextCursor:
+      hasMore && last ? encodeCursor({ ts: last.created_at, id: last.id }) : null,
+  };
 }
 
 export async function getSnippet(id: string): Promise<SnippetRow | null> {

@@ -10,6 +10,8 @@
 import type { TaskType } from "@/lib/constants";
 
 import { getDb } from "./client";
+import { cursorFilter, encodeCursor, type Cursor } from "./cursor";
+import { sanitizeSearch } from "./search";
 import type { ConversationRow, MessageRole, MessageRow, MessageStatus, MessageUsage } from "./types";
 
 export class DbError extends Error {
@@ -52,15 +54,56 @@ export async function createConversation(input: {
   return data as ConversationRow;
 }
 
-export async function listConversations(limit = 20): Promise<ConversationRow[]> {
-  const { data, error } = await getDb()
+export type ConversationPage = {
+  rows: ConversationRow[];
+  /** 为 null 表示已经没有下一页 */
+  nextCursor: string | null;
+};
+
+/**
+ * 侧栏列表：按 last_message_at 倒序翻页，支持标题关键词与时间范围。
+ *
+ * 多取一条来判断"是否还有下一页"，避免为了一个布尔值多跑一次 count(*)。
+ */
+export async function listConversations(options: {
+  limit: number;
+  cursor?: Cursor | null;
+  keyword?: string;
+  /** ISO 时间戳；只返回该时刻之后的会话 */
+  since?: string | null;
+}): Promise<ConversationPage> {
+  const { limit } = options;
+
+  let query = getDb()
     .from("conversations")
     .select("*")
+    // 两列排序：last_message_at 可能重复，补一个 id 才能让游标定位唯一
     .order("last_message_at", { ascending: false })
-    .limit(limit);
+    .order("id", { ascending: false })
+    .limit(limit + 1);
 
+  if (options.since) query = query.gte("last_message_at", options.since);
+
+  const keyword = options.keyword ? sanitizeSearch(options.keyword) : "";
+  if (keyword) query = query.ilike("title", `%${keyword}%`);
+
+  if (options.cursor) {
+    query = query.or(cursorFilter("last_message_at", options.cursor));
+  }
+
+  const { data, error } = await query;
   if (error) raise("读取会话列表", error);
-  return (data ?? []) as ConversationRow[];
+
+  const fetched = (data ?? []) as ConversationRow[];
+  const hasMore = fetched.length > limit;
+  const rows = hasMore ? fetched.slice(0, limit) : fetched;
+  const last = rows.at(-1);
+
+  return {
+    rows,
+    nextCursor:
+      hasMore && last ? encodeCursor({ ts: last.last_message_at, id: last.id }) : null,
+  };
 }
 
 export async function getConversation(id: string): Promise<ConversationRow | null> {

@@ -84,12 +84,32 @@ data: {"type":"done","usage":{"promptTokens":304,"completionTokens":141,"totalTo
 
 | 方法 + 路径 | 说明 | 关键约束 |
 |---|---|---|
-| `GET /api/conversations?limit=20` | 会话列表，按 `last_message_at` 倒序 | limit 1–50 |
+| `GET /api/conversations?limit=20&cursor=&q=&range=` | 会话列表，按 `last_message_at` 倒序 | 见下方「分页与筛选」 |
 | `POST /api/conversations` | 新建会话 `{ taskType, language, title? }` | 返回 201 |
 | `GET /api/conversations/[id]` | 单个会话 | 不存在 → 404 |
 | `PATCH /api/conversations/[id]` | 重命名 `{ title }` | 1–60 字，空标题 → 400 |
 | `DELETE /api/conversations/[id]` | 删除会话（消息级联删除） | 204 |
 | `GET /api/conversations/[id]/messages` | 会话 + 全部消息（按 seq 升序） | 不存在 → 404 |
+
+### 分页与筛选（会话、片段共用）
+
+```http
+GET /api/conversations?limit=10&q=Hook&range=7d
+→ 200
+{ "conversations": [ … ], "nextCursor": "MjAyNi0xMS0wMVQwNjoz…" }
+```
+
+| 参数 | 取值 | 说明 |
+|---|---|---|
+| `limit` | 会话 1–50，片段 1–100 | 每页条数 |
+| `cursor` | 上一页返回的 `nextCursor` | 不传即第一页 |
+| `q` | ≤60 字 | 会话匹配标题，片段匹配标题或代码正文 |
+| `range` | `all` / `7d` / `30d` | 仅会话；按 `last_message_at` 过滤 |
+
+- `nextCursor` 为 `null` 表示已到末尾。**客户端不需要理解它的内容**，只需原样回传。
+- 游标是「排序键 + 主键」的 base64url。之所以不用 `offset`：会话按 `last_message_at` 排序，新消息会把记录插到顶部，`offset` 会整体后移导致翻页时重复看到同一条；而且越往后扫描代价越高。
+- 相同时间戳的记录靠主键打破并列，所以边界处不会重复也不会漏。伪造或过期的游标一律返回 `400 VALIDATION`，不会带进数据库。
+- `range` 的 7 / 30 天定义在 `src/lib/constants.ts`，界面上的按钮文案与服务端计算共用同一份，避免两处数字漂移。
 
 数据库错误对外统一返回 `500 DB_ERROR` 与中性文案，原始 PostgREST 信息只进服务端日志。
 
@@ -97,7 +117,7 @@ data: {"type":"done","usage":{"promptTokens":304,"completionTokens":141,"totalTo
 
 | 方法 + 路径 | 说明 | 关键约束 |
 |---|---|---|
-| `GET /api/snippets?q=&language=&limit=` | 片段列表，按创建时间倒序 | `q` ≤60 字；`limit` 1–100 |
+| `GET /api/snippets?q=&language=&limit=&cursor=` | 片段列表，按创建时间倒序 | `q` ≤60 字；`limit` 1–100 |
 | `POST /api/snippets` | 新建 `{ title, language, code, description?, sourceMessageId? }` | 标题 1–100；代码 1–20000 |
 | `GET /api/snippets/[id]` | 单个片段 | 不存在 → 404 |
 | `PATCH /api/snippets/[id]` | 部分更新 | 至少一个字段，空对象 → 400 |

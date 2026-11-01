@@ -102,6 +102,8 @@ export type UseAiTask = {
   exchanges: Exchange[];
   isStreaming: boolean;
   conversationId: string | null;
+  /** 打开会话时读到的标题；侧栏被搜索/时间筛选过滤掉时，顶栏仍能显示它 */
+  conversationTitle: string | null;
   isLoadingConversation: boolean;
   run: (input: StartInput) => Promise<void>;
   stop: () => void;
@@ -113,6 +115,7 @@ export type UseAiTask = {
 export function useAiTask(): UseAiTask {
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationTitle, setConversationTitle] = useState<string | null>(null);
   const [isLoadingConversation, setLoadingConversation] = useState(false);
 
   // 用 ref 而不是 state 保存控制器：它不参与渲染，且需要在回调里同步判断
@@ -222,6 +225,7 @@ export function useAiTask(): UseAiTask {
     controllerRef.current?.abort();
     conversationRef.current = null;
     setConversationId(null);
+    setConversationTitle(null);
     setExchanges([]);
   }, []);
 
@@ -231,9 +235,13 @@ export function useAiTask(): UseAiTask {
     try {
       const response = await fetch(`/api/conversations/${id}/messages`, { cache: "no-store" });
       if (!response.ok) throw new Error(`加载会话失败（HTTP ${response.status}）`);
-      const data = (await response.json()) as { messages: MessageRow[] };
+      const data = (await response.json()) as {
+        conversation?: { title?: string };
+        messages: MessageRow[];
+      };
       conversationRef.current = id;
       setConversationId(id);
+      setConversationTitle(data.conversation?.title ?? null);
       setExchanges(rowsToExchanges(data.messages ?? []));
     } finally {
       setLoadingConversation(false);
@@ -246,6 +254,7 @@ export function useAiTask(): UseAiTask {
     exchanges,
     isStreaming,
     conversationId,
+    conversationTitle,
     isLoadingConversation,
     run,
     stop,

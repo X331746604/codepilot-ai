@@ -122,6 +122,32 @@ export const LIMITS = {
 /** 单次输出上限，传给模型接口的 max_tokens */
 export const MAX_OUTPUT_TOKENS = 2_048;
 
+/**
+ * 会话列表的时间范围筛选。
+ *
+ * 天数定义在这里而不是散落在 UI 与路由里：界面上的「近 7 天」和
+ * 服务端实际用来算 `since` 的天数必须是同一个数字。
+ */
+export const CONVERSATION_RANGES = [
+  { value: "all", label: "全部", days: null },
+  { value: "7d", label: "近 7 天", days: 7 },
+  { value: "30d", label: "近 30 天", days: 30 },
+] as const;
+
+export type ConversationRange = (typeof CONVERSATION_RANGES)[number]["value"];
+
+export const CONVERSATION_RANGE_VALUES = CONVERSATION_RANGES.map((item) => item.value) as [
+  ConversationRange,
+  ...ConversationRange[],
+];
+
+/** 把范围换算成 ISO 起点；`all` 返回 null，表示不加时间条件。 */
+export function rangeToSince(range: ConversationRange, now = Date.now()): string | null {
+  const days = CONVERSATION_RANGES.find((item) => item.value === range)?.days ?? null;
+  if (days === null) return null;
+  return new Date(now - days * 86_400_000).toISOString();
+}
+
 /** 上下文裁剪参数：与需求文档 FR-6.4 对应 */
 export const CONTEXT_WINDOW = {
   maxMessages: 10,

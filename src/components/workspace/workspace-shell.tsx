@@ -55,8 +55,17 @@ export function WorkspaceShell() {
   const [snippetPending, setSnippetPending] = useState(false);
 
   const promptRef = useRef<HTMLTextAreaElement>(null);
-  const { exchanges, isStreaming, conversationId, run, stop, retry, reset, openConversation } =
-    useAiTask();
+  const {
+    exchanges,
+    isStreaming,
+    conversationId,
+    conversationTitle,
+    run,
+    stop,
+    retry,
+    reset,
+    openConversation,
+  } = useAiTask();
   const conversations = useConversations();
 
   function handlePickExample(nextMode: TaskType, nextPrompt: string) {
@@ -160,12 +169,26 @@ export function WorkspaceShell() {
 
   const lastExchange = exchanges.at(-1);
 
+  // 侧栏可能被搜索或时间筛选过滤掉当前会话，此时退回打开会话时读到的标题，
+  // 否则顶栏会莫名变成「工作台」。
+  const activeTitle =
+    conversations.items.find((item) => item.id === conversationId)?.title ??
+    conversationTitle ??
+    "工作台";
+
   const sidebar = (
     <SessionSidebar
       items={conversations.items}
       isLoading={conversations.isLoading}
+      isLoadingMore={conversations.isLoadingMore}
       error={conversations.error}
+      hasMore={conversations.hasMore}
+      query={conversations.query}
+      range={conversations.range}
       activeId={conversationId}
+      onQueryChange={conversations.setQuery}
+      onRangeChange={conversations.setRange}
+      onLoadMore={conversations.loadMore}
       onSelect={handleSelectConversation}
       onNew={handleNewConversation}
       onRename={conversations.rename}
@@ -189,7 +212,7 @@ export function WorkspaceShell() {
         <Brand />
         <Separator orientation="vertical" className="mx-1 hidden h-5 sm:block" />
         <span className="hidden max-w-[14rem] truncate text-sm text-muted-foreground sm:inline">
-          {conversations.items.find((item) => item.id === conversationId)?.title ?? "工作台"}
+          {activeTitle}
         </span>
         <Badge variant="outline" className="ml-1 hidden font-normal sm:inline-flex">
           单用户模式

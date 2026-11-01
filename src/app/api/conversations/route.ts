@@ -1,4 +1,6 @@
+import { rangeToSince } from "@/lib/constants";
 import { createConversation, listConversations } from "@/lib/db/conversations";
+import { decodeCursor, type Cursor } from "@/lib/db/cursor";
 import { dbErrorResponse, jsonError, jsonOk } from "@/lib/db/http";
 import { createConversationSchema, listQuerySchema } from "@/lib/db/schemas";
 import type { ConversationRow, ConversationSummary } from "@/lib/db/types";
@@ -21,15 +23,35 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const parsed = listQuerySchema.safeParse({
     limit: url.searchParams.get("limit") ?? undefined,
+    cursor: url.searchParams.get("cursor") ?? undefined,
+    q: url.searchParams.get("q") ?? undefined,
+    range: url.searchParams.get("range") ?? undefined,
   });
 
   if (!parsed.success) {
-    return jsonError(400, "VALIDATION", "limit 必须是 1–50 之间的整数");
+    return jsonError(400, "VALIDATION", parsed.error.issues[0]?.message ?? "查询参数不合法");
+  }
+
+  let cursor: Cursor | null = null;
+  if (parsed.data.cursor) {
+    cursor = decodeCursor(parsed.data.cursor);
+    if (!cursor) {
+      return jsonError(400, "VALIDATION", "分页游标不合法");
+    }
   }
 
   try {
-    const rows = await listConversations(parsed.data.limit);
-    return jsonOk({ conversations: rows.map(toSummary) });
+    const page = await listConversations({
+      limit: parsed.data.limit,
+      cursor,
+      keyword: parsed.data.q,
+      since: rangeToSince(parsed.data.range),
+    });
+
+    return jsonOk({
+      conversations: page.rows.map(toSummary),
+      nextCursor: page.nextCursor,
+    });
   } catch (error) {
     return dbErrorResponse(error);
   }

@@ -18,6 +18,9 @@ const nextConfig: NextConfig = {
   // 本项目大量页面依赖请求期的会话态与数据库读取，该模式会强制为动态数据包裹
   // Suspense 边界，初期会增加不必要的构建失败面，故显式关闭，后续按需再评估。
   cacheComponents: false,
+  // 开发模式的悬浮指示器会压在侧栏底部的「代码片段」入口上，截图与录屏时很碍事。
+  // 只在 dev 生效，生产构建本来就没有它。
+  devIndicators: false,
 };
 
 export default nextConfig;

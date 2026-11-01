@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { LANGUAGE_VALUES, LIMITS, TASK_TYPE_VALUES } from "@/lib/constants";
+import {
+  CONVERSATION_RANGE_VALUES,
+  LANGUAGE_VALUES,
+  LIMITS,
+  TASK_TYPE_VALUES,
+} from "@/lib/constants";
 
 export const createConversationSchema = z.object({
   taskType: z.enum(TASK_TYPE_VALUES, { error: "未知的任务类型" }),
@@ -16,8 +21,16 @@ export const renameConversationSchema = z.object({
     .max(LIMITS.conversationTitle, `标题不能超过 ${LIMITS.conversationTitle} 字`),
 });
 
+/** 游标是 base64url 串，长度上限给足余量即可；真正的合法性由 decodeCursor 判断。 */
+const cursorParam = z.string().trim().max(200).optional();
+
 export const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
+  cursor: cursorParam,
+  q: z.string().trim().max(60).optional(),
+  range: z
+    .enum(CONVERSATION_RANGE_VALUES, { error: "时间范围不合法" })
+    .default("all"),
 });
 
 export const idSchema = z.uuid("会话 ID 不合法");
@@ -62,4 +75,5 @@ export const listSnippetQuerySchema = z.object({
   q: z.string().trim().max(60).optional(),
   language: z.enum(LANGUAGE_VALUES, { error: "不支持的编程语言" }).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
+  cursor: cursorParam,
 });

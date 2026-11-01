@@ -57,10 +57,11 @@ export function SnippetsView() {
   const [pending, setPending] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SnippetRow | null>(null);
 
-  const { items, isLoading, error, create, update, remove } = useSnippets({
-    q: debounced,
-    language: language === "all" ? "" : language,
-  });
+  const { items, isLoading, isLoadingMore, hasMore, error, create, update, remove, loadMore } =
+    useSnippets({
+      q: debounced,
+      language: language === "all" ? "" : language,
+    });
 
   // 输入防抖：每次按键都请求一次会让列表在打字时不断闪烁
   useEffect(() => {
@@ -213,49 +214,68 @@ export function SnippetsView() {
               ) : null}
             </div>
           ) : (
-            <ul className="grid gap-3 sm:grid-cols-2">
-              {items.map((snippet) => (
-                <li key={snippet.id} className="flex flex-col rounded-lg border p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h2 className="truncate text-sm font-medium">{snippet.title}</h2>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {getLanguageLabel(snippet.language)} · {formatDate(snippet.created_at)}
+            <>
+              <ul className="grid gap-3 sm:grid-cols-2">
+                {items.map((snippet) => (
+                  <li key={snippet.id} className="flex flex-col rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h2 className="truncate text-sm font-medium">{snippet.title}</h2>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {getLanguageLabel(snippet.language)} · {formatDate(snippet.created_at)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <CopyButton text={snippet.code} />
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label="编辑片段"
+                          onClick={() => openEdit(snippet)}
+                        >
+                          <Pencil />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label="删除片段"
+                          onClick={() => setDeleteTarget(snippet)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {snippet.description ? (
+                      <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                        {snippet.description}
                       </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-0.5">
-                      <CopyButton text={snippet.code} />
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label="编辑片段"
-                        onClick={() => openEdit(snippet)}
-                      >
-                        <Pencil />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label="删除片段"
-                        onClick={() => setDeleteTarget(snippet)}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                  </div>
+                    ) : null}
 
-                  {snippet.description ? (
-                    <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                      {snippet.description}
-                    </p>
-                  ) : null}
+                    <pre className="mt-2 max-h-28 overflow-hidden rounded-md bg-muted/40 p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
+                      {snippet.code}
+                    </pre>
+                  </li>
+                ))}
+              </ul>
 
-                  <pre className="mt-2 max-h-28 overflow-hidden rounded-md bg-muted/40 p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
-                    {snippet.code}
-                  </pre>
-                </li>
-              ))}
-            </ul>
+              <div className="mt-4 flex flex-col items-center gap-2">
+                {hasMore ? (
+                  <Button variant="outline" size="sm" onClick={loadMore} disabled={isLoadingMore}>
+                    {isLoadingMore ? (
+                      <>
+                        <LoaderCircle data-icon="inline-start" className="animate-spin" />
+                        加载中…
+                      </>
+                    ) : (
+                      "加载更多"
+                    )}
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground">已显示全部 {items.length} 条</p>
+                )}
+              </div>
+            </>
           )}
         </div>
       </main>
