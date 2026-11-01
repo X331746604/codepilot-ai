@@ -93,6 +93,18 @@ data: {"type":"done","usage":{"promptTokens":304,"completionTokens":141,"totalTo
 
 数据库错误对外统一返回 `500 DB_ERROR` 与中性文案，原始 PostgREST 信息只进服务端日志。
 
+## 3.6 片段接口
+
+| 方法 + 路径 | 说明 | 关键约束 |
+|---|---|---|
+| `GET /api/snippets?q=&language=&limit=` | 片段列表，按创建时间倒序 | `q` ≤60 字；`limit` 1–100 |
+| `POST /api/snippets` | 新建 `{ title, language, code, description?, sourceMessageId? }` | 标题 1–100；代码 1–20000 |
+| `GET /api/snippets/[id]` | 单个片段 | 不存在 → 404 |
+| `PATCH /api/snippets/[id]` | 部分更新 | 至少一个字段，空对象 → 400 |
+| `DELETE /api/snippets/[id]` | 删除 | 204 |
+
+搜索同时匹配 `title` 与 `code`（`ilike`，大小写不敏感）。查询词会在服务端剔除 `, ( ) % _ \`：前三个会破坏 PostgREST `or()` 的条件分隔，后两个是 LIKE 通配符，用户输入应被当作字面量。
+
 ## 4. 失败响应（普通 JSON，非流式）
 
 ```jsonc
