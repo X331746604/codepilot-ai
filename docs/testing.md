@@ -21,8 +21,15 @@ pnpm test            # 跑全部单测 + 组件测试
 pnpm test:watch      # 监听模式
 pnpm test:coverage   # 带覆盖率，低于阈值会失败
 pnpm test:e2e        # 冒烟 e2e（不需要数据库与模型）
+pnpm verify:migrations  # 用 PGlite 跑全部迁移并验证 RLS（无需网络）
 pnpm verify          # typecheck + lint + test，提交前跑这个
 ```
+
+`verify:migrations` 在本地用 WASM 版 Postgres 依次执行四份迁移，先搭一个最小的
+`auth.users` / `auth.uid()` 等价物，再模拟两个账号验证：读不到、改不动、删不掉、
+插不进对方的会话，以及删账号时数据级联。它抓的是「SQL 写了不存在的列」这类
+只有贴到 SQL Editor 才会暴露的错误（0004 第一版就踩过），但不能替代
+`scripts/verify-supabase.mjs` 对真实 Supabase 的验证。
 
 真实主链路（会调用模型、写数据库，默认跳过）：
 
@@ -84,7 +91,7 @@ pnpm test:e2e --grep "主链路"
 ## 6. 明确没有覆盖的
 
 1. **API 路由的完整链路**：`/api/ai/*` 只测到"鉴权 + 校验 + 配置 + 落库之前"的编排层，真正读写数据库的那段依赖 Supabase；`/api/conversations`、`/api/snippets`、`/api/profile` 则完全没有单测。本地测这些要么起一个假服务、要么连真库，目前靠 e2e 与每轮任务的 `curl` 实测兜底。
-2. **数据库约束与 RLS**：靠 `scripts/verify-supabase.mjs` 单独验证，不在测试套件里。
+2. **数据库约束与 RLS**：`pnpm verify:migrations` 在 PGlite 里验证策略行为，`scripts/verify-supabase.mjs` 验证真实 Supabase 的读写与级联；两者都不在 `pnpm test` 里，因为前者需要 WASM 启动、后者需要网络与凭据。
 3. **主题切换、移动端抽屉、下拉菜单**：Radix 的 Portal 与焦点管理在 jsdom 里行为与真实浏览器差异较大，测出来的通过率不代表真实可用。
 4. **视觉回归**：没有截图比对。界面问题仍靠人工看截图。
 5. **并发**：`seq` 分配的竞态、翻页期间插入新记录，都没有做并发测试。

@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test"
+    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "verify:migrations": "node scripts/verify-migrations.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -38,6 +39,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.14",
     "@playwright/test": "^1.64.1",
     "@tailwindcss/turbopack": "^4",
     "@tailwindcss/typography": "^0.5.20",

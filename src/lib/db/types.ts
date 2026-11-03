@@ -8,7 +8,8 @@ export type MessageUsage = {
 
 export type ConversationRow = {
   id: string;
-  owner_id: string | null;
+  /** 0004 迁移起为 not null，由数据库默认值 auth.uid() 填充 */
+  owner_id: string;
   title: string;
   task_type: TaskType;
   language: string;
@@ -43,7 +44,8 @@ export type ConversationSummary = Pick<
 
 export type SnippetRow = {
   id: string;
-  owner_id: string | null;
+  /** 0004 迁移起为 not null，由数据库默认值 auth.uid() 填充 */
+  owner_id: string;
   title: string;
   language: string;
   code: string;

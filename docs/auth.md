@@ -24,26 +24,35 @@ Supabase Auth（邮箱 + 密码）+ `@supabase/ssr` 的 cookie 会话。
 
 ## 3. RLS 策略
 
-三张业务表各四条策略，全部是 `owner_id = auth.uid()`：
+归属模型分两种，**不是三张表都有 `owner_id`**：
+
+| 表 | 归属方式 |
+|---|---|
+| `conversations` | `owner_id = auth.uid()` |
+| `snippets` | `owner_id = auth.uid()` |
+| `messages` | 通过 `conversation_id` 推导，**没有 owner_id 列** |
+
+`conversations` / `snippets` 各四条策略：
 
 ```sql
 create policy conversations_select_own on public.conversations
   for select using (owner_id = auth.uid());
 ```
 
-`messages` 的 insert 额外多一个条件：
+`messages` 的四类操作全部走父会话校验：
 
 ```sql
-with check (
-  owner_id = auth.uid()
-  and exists (
+using (
+  exists (
     select 1 from public.conversations c
      where c.id = conversation_id and c.owner_id = auth.uid()
   )
-);
+)
 ```
 
-**为什么需要它**：`owner_id` 有 `default auth.uid()`，用户可以把自己的消息插到**别人的会话**下——外键只保证会话存在，不保证属于你。这条 `exists` 才是真正的边界。
+**为什么 messages 不冗余存一份 owner_id**：多一列就多一处可能与父会话不一致的地方，而一致性只能靠触发器维持。用 `exists` 推导没有漂移风险，代价是每次读消息多做一次主键查找。
+
+**为什么必须校验父会话**：外键只保证会话存在，不保证属于你。没有这条 `exists`，用户可以把消息插到别人的会话下，也可以读到别人会话里的全部消息——`messages` 的四类策略漏掉任何一类都等于开了个口子。
 
 `profiles` 只有 select / update 两条策略，**刻意不建 insert 与 delete**：
 建档由注册触发器（`security definer`）完成，删号随 `auth.users` 级联。客户端没有 insert 权限，也就无法伪造别人的资料。

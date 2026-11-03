@@ -167,12 +167,17 @@ NODE_USE_ENV_PROXY=1 HTTPS_PROXY=http://127.0.0.1:7897 pnpm dev
 这一份改动最多，单独说明：
 
 1. **新增 `profiles` 表**：主键即 `auth.users.id`，存邮箱快照、默认语言、创建时间。
-   注册时由 `handle_new_user()` 触发器自动建档（`security definer`，因为 anon 没有 insert 权限）。
-2. **三张业务表的 `owner_id` 改为 `not null` 且默认 `auth.uid()`**。
+   注册时由 `handle_new_user()` 触发器自动建档（`security definer`，因为 anon 没有 insert 权限）；
+   迁移末尾还有一次 `insert … select from auth.users`，给触发器生效前就存在的账号补档。
+2. **`conversations` / `snippets` 的 `owner_id` 改为 `not null` 且默认 `auth.uid()`**，
+   并加上指向 `auth.users(id)` 的外键（`on delete cascade`）——没有外键时删账号会留下
+   指向不存在用户的孤儿数据。
    接入认证前产生的数据无法归属，迁移里直接删除——留着只会变成谁都读不到也删不掉的幽灵行。
-3. **四类操作各建一条策略**，条件统一是 `owner_id = auth.uid()`；
-   `messages` 的 insert 额外用 `exists` 校验父会话归属。
-4. **索引最左列改成 `owner_id`**：现在所有查询都带用户过滤，原索引用不上。
+3. **`messages` 没有 `owner_id`**。归属由 `conversation_id` 推导，四类策略统一用
+   `exists (select 1 from conversations … owner_id = auth.uid())`。
+   多存一列就多一处可能与父会话不一致的地方，而一致性只能靠触发器维持。
+4. **索引最左列改成 `owner_id`**（仅 conversations / snippets）：现在所有查询都带用户过滤，
+   原索引用不上。`messages` 继续用 `0001` 的 `(conversation_id, seq)`，它才是实际查询形状。
 
 策略的设计理由与越权返回码的选择见 [docs/auth.md](docs/auth.md)。
 

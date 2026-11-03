@@ -6,6 +6,10 @@
 -- 前置：Authentication → Providers → Email 已启用。
 -- 注意：项目默认开启「Confirm email」，真实注册需要点邮件里的链接；
 -- 本地验证用 Admin API 直接建「已确认」的账号（见 docs/auth.md）。
+--
+-- 归属模型：
+--   conversations / snippets 有 owner_id 列；
+--   messages 没有 owner_id，归属由父会话决定（见第 4 节）。
 -- ============================================================
 
 -- ------------------------------------------------------------
@@ -66,8 +70,19 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- 触发器只对「之后」注册的账号生效。此前用 Admin API 建过的测试账号
+-- （以及你自己在控制台里手工建的第一个账号）需要在这里补一次，
+-- 否则登录后读 profile 会 404。
+insert into public.profiles (id, email)
+select u.id, coalesce(u.email, '')
+  from auth.users u
+on conflict (id) do nothing;
+
 -- ------------------------------------------------------------
--- 3. 三张业务表补 owner_id
+-- 3. conversations / snippets 补 owner_id
+--
+-- 注意：messages **没有** owner_id 列，它的归属由 conversation_id 决定。
+-- 早期版本在这里对三张表统一操作，会在 messages 上报 42703 并整批回滚。
 --
 -- 接入认证前写入的数据 owner_id 为空，无法归属到任何账号。
 -- 它们是开发期的测试数据，这里直接删除——保留下来只会变成
@@ -76,16 +91,50 @@ create trigger on_auth_user_created
 delete from public.conversations where owner_id is null;  -- messages 级联删除
 delete from public.snippets      where owner_id is null;
 
+-- 万一手工造过指向不存在用户的数据，约束会加不上，先清干净
+delete from public.conversations c
+ where c.owner_id is not null
+   and not exists (select 1 from auth.users u where u.id = c.owner_id);
+
+delete from public.snippets s
+ where s.owner_id is not null
+   and not exists (select 1 from auth.users u where u.id = s.owner_id);
+
 alter table public.conversations alter column owner_id set default auth.uid();
-alter table public.messages      alter column owner_id set default auth.uid();
 alter table public.snippets      alter column owner_id set default auth.uid();
 
 alter table public.conversations alter column owner_id set not null;
-alter table public.messages      alter column owner_id set not null;
 alter table public.snippets      alter column owner_id set not null;
 
+-- 外键的意义：删账号时数据跟着走。
+-- 没有它，auth.users 删了而业务表留着，owner_id 指向一个不存在的用户。
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'conversations_owner_fk'
+  ) then
+    alter table public.conversations
+      add constraint conversations_owner_fk
+      foreign key (owner_id) references auth.users (id) on delete cascade;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'snippets_owner_fk'
+  ) then
+    alter table public.snippets
+      add constraint snippets_owner_fk
+      foreign key (owner_id) references auth.users (id) on delete cascade;
+  end if;
+end $$;
+
 -- ------------------------------------------------------------
--- 4. RLS 策略：四类操作全部限定 owner_id = auth.uid()
+-- 4. RLS 策略
+--
+-- conversations / snippets：四条策略，条件 owner_id = auth.uid()。
+-- messages：没有 owner_id，四类操作一律校验父会话归属。
 --
 -- 之前的表是"开了 RLS 但没有策略" = 全部拒绝。现在在其上叠加允许规则。
 -- ------------------------------------------------------------
@@ -124,19 +173,25 @@ drop policy if exists snippets_delete_own on public.snippets;
 create policy snippets_delete_own on public.snippets
   for delete using (owner_id = auth.uid());
 
--- messages
+-- messages：归属完全由父会话推导。
+--
+-- 只校验 conversation_id 存在是不够的——外键只保证会话存在，不保证属于你，
+-- 否则用户可以把消息插到别人的会话下。exists 子查询是这里唯一的边界，
+-- 四类操作都必须带上，漏掉任何一类都等于开了个口子。
 drop policy if exists messages_select_own on public.messages;
 create policy messages_select_own on public.messages
-  for select using (owner_id = auth.uid());
+  for select using (
+    exists (
+      select 1 from public.conversations c
+       where c.id = conversation_id
+         and c.owner_id = auth.uid()
+    )
+  );
 
--- 仅校验 owner_id 是不够的：owner_id 取默认值 auth.uid() 时，
--- 用户可以把自己的消息挂到**别人的会话**下（外键只保证会话存在）。
--- 因此 insert 还要证明父会话属于自己。
 drop policy if exists messages_insert_own on public.messages;
 create policy messages_insert_own on public.messages
   for insert with check (
-    owner_id = auth.uid()
-    and exists (
+    exists (
       select 1 from public.conversations c
        where c.id = conversation_id
          and c.owner_id = auth.uid()
@@ -145,20 +200,56 @@ create policy messages_insert_own on public.messages
 
 drop policy if exists messages_update_own on public.messages;
 create policy messages_update_own on public.messages
-  for update using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+  for update using (
+    exists (
+      select 1 from public.conversations c
+       where c.id = conversation_id
+         and c.owner_id = auth.uid()
+    )
+  ) with check (
+    exists (
+      select 1 from public.conversations c
+       where c.id = conversation_id
+         and c.owner_id = auth.uid()
+    )
+  );
 
 drop policy if exists messages_delete_own on public.messages;
 create policy messages_delete_own on public.messages
-  for delete using (owner_id = auth.uid());
+  for delete using (
+    exists (
+      select 1 from public.conversations c
+       where c.id = conversation_id
+         and c.owner_id = auth.uid()
+    )
+  );
 
 -- ------------------------------------------------------------
--- 5. 索引：查询都带 owner_id 过滤，把 owner 放最左列
+-- 5. 授权
+--
+-- Supabase 默认会把 public schema 的表授给 authenticated，
+-- 但这里显式写一遍：迁移在别的环境（本地 Postgres、CI）执行时
+-- 同样成立，也不怕项目的默认权限被改过。
+--
+-- 注意 profiles 只给 select / update：建档靠触发器，
+-- 客户端拿不到 insert 权限，也就无法伪造别人的资料。
+-- ------------------------------------------------------------
+grant usage on schema public to authenticated;
+
+grant select, insert, update, delete
+  on public.conversations, public.messages, public.snippets
+  to authenticated;
+
+grant select, update on public.profiles to authenticated;
+
+-- ------------------------------------------------------------
+-- 6. 索引：查询都带 owner_id 过滤，把 owner 放最左列
+--
+-- messages 不在此列——它按 conversation_id 查，0001 里的
+-- (conversation_id, seq) 已经覆盖，再建 (owner_id, ...) 会直接报错。
 -- ------------------------------------------------------------
 create index if not exists conversations_owner_cursor_idx
   on public.conversations (owner_id, last_message_at desc, id desc);
-
-create index if not exists messages_owner_idx
-  on public.messages (owner_id, conversation_id);
 
 create index if not exists snippets_owner_cursor_idx
   on public.snippets (owner_id, created_at desc, id desc);
