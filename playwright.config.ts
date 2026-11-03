@@ -23,6 +23,16 @@ export default defineConfig({
     trace: "off",
     screenshot: "only-on-failure",
   },
+  projects: [
+    // 先跑登录态准备：建账号 → 真实登录 → 存 cookie
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
+    {
+      name: "e2e",
+      testMatch: /.*\.spec\.ts/,
+      use: { storageState: "e2e/.auth/user.json" },
+      dependencies: ["setup"],
+    },
+  ],
   webServer: {
     command: `pnpm exec next dev --port ${PORT}`,
     url: BASE_URL,

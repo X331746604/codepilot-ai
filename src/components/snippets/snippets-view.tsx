@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, BookmarkPlus, LoaderCircle, Pencil, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { UserMenu } from "@/components/auth/user-menu";
 import { CopyButton } from "@/components/code/copy-button";
 import { Brand } from "@/components/layout/brand";
 import { SnippetDialog, type SnippetDraft } from "@/components/snippets/snippet-dialog";
@@ -29,7 +30,6 @@ import {
 import { getLanguageLabel, LANGUAGES } from "@/lib/constants";
 import type { SnippetRow } from "@/lib/db/types";
 import { useSnippets } from "@/hooks/use-snippets";
-import { usePreferences } from "@/hooks/use-preferences";
 
 const EMPTY_DRAFT: SnippetDraft = {
   title: "",
@@ -46,7 +46,14 @@ function formatDate(iso: string): string {
   ).padStart(2, "0")}`;
 }
 
-export function SnippetsView() {
+export function SnippetsView({
+  userEmail,
+  defaultLanguage,
+}: {
+  userEmail: string;
+  /** 来自 profiles 表，新建片段时作为默认语言 */
+  defaultLanguage: string;
+}) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [language, setLanguage] = useState("all");
@@ -58,7 +65,6 @@ export function SnippetsView() {
   const [pending, setPending] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SnippetRow | null>(null);
 
-  const { preferences } = usePreferences();
   const { items, isLoading, isLoadingMore, hasMore, error, create, update, remove, loadMore } =
     useSnippets({
       q: debounced,
@@ -74,8 +80,8 @@ export function SnippetsView() {
   function openCreate() {
     setEditorMode("create");
     setEditorId(null);
-    // 新建片段沿用设置里的默认语言，省掉每次手动切一次
-    setDraft({ ...EMPTY_DRAFT, language: preferences.defaultLanguage });
+    // 新建片段沿用账号的默认语言，省掉每次手动切一次
+    setDraft({ ...EMPTY_DRAFT, language: defaultLanguage });
     setEditorOpen(true);
   }
 
@@ -150,6 +156,7 @@ export function SnippetsView() {
               </Link>
             </Button>
             <ThemeToggle />
+            <UserMenu email={userEmail} />
           </div>
         </div>
       </header>

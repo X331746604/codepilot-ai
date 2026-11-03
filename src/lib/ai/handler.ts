@@ -7,6 +7,7 @@
  */
 
 import { CONTEXT_WINDOW, type TaskType } from "@/lib/constants";
+import { getSession } from "@/lib/auth/server";
 import {
   appendMessage,
   createConversation,
@@ -112,6 +113,17 @@ export function createAiRoute(task: TaskType) {
     }
     const config = configResult.config;
 
+    // 鉴权放在最前面：未登录的请求不该消耗任何解析与上游额度。
+    // 这里用的是用户态客户端（受 RLS 约束），不是 secret key。
+    let session;
+    try {
+      session = await getSession();
+    } catch (error) {
+      return dbErrorResponse(error);
+    }
+    if (!session) return jsonError(401, "UNAUTHORIZED", "请先登录后再使用");
+    const db = session.supabase;
+
     const rawBody = await request.text().catch(() => "");
     if (rawBody.length > MAX_BODY_BYTES) {
       return jsonError(413, "PAYLOAD_TOO_LARGE", "请求内容过大，请缩短输入");
@@ -148,15 +160,15 @@ export function createAiRoute(task: TaskType) {
 
     try {
       if (parsed.data.conversationId) {
-        const existing = await getConversation(parsed.data.conversationId);
+        const existing = await getConversation(db, parsed.data.conversationId);
         if (!existing) return jsonError(404, "NOT_FOUND", "会话不存在或已被删除");
         conversationId = existing.id;
 
         // 取历史必须在写入本轮用户消息之前，否则历史里会多出一条重复的当前输入
-        const rows = await recentMessages(conversationId, CONTEXT_WINDOW.maxMessages);
+        const rows = await recentMessages(db, conversationId, CONTEXT_WINDOW.maxMessages);
         history = rows.map((row) => ({ role: row.role, content: row.content }));
       } else {
-        const created = await createConversation({
+        const created = await createConversation(db, {
           taskType: task,
           language: parsed.data.language,
         });
@@ -171,7 +183,7 @@ export function createAiRoute(task: TaskType) {
     const userInput = summarizeInput(taskRequest);
 
     try {
-      await appendMessage({
+      await appendMessage(db, {
         conversationId,
         role: "user",
         // 存"用户原话"而不是拼装后的模型提示词：刷新后气泡里应当还是自己写的那句话，
@@ -181,7 +193,7 @@ export function createAiRoute(task: TaskType) {
         language: parsed.data.language,
       });
       // 首条消息写入后把「新会话」替换成内容摘要；非首条时该更新不影响任何行
-      await titleFromFirstPrompt(conversationId, userInput);
+      await titleFromFirstPrompt(db, conversationId, userInput);
     } catch (error) {
       return dbErrorResponse(error);
     }
@@ -255,7 +267,7 @@ export function createAiRoute(task: TaskType) {
           // 有内容才落库：完全失败（一个字都没生成）时保留一条空消息没有价值
           if (assistantText.length > 0) {
             try {
-              await appendMessage({
+              await appendMessage(db, {
                 conversationId,
                 role: "assistant",
                 content: assistantText,

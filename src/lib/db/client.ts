@@ -1,18 +1,17 @@
 /**
- * Supabase 服务端客户端。
+ * 数据库客户端的类型与错误。
  *
- * 只允许在 Route Handler / 服务端模块里引入。这里用的是 secret / service_role
- * 级别的密钥，它能绕过所有 RLS —— 一旦泄漏等于交出整个数据库。
+ * 这里刻意**不提供**全局单例：接入认证后，每次请求用的是
+ * 「当前登录用户」的客户端（携带其 access token，受 RLS 约束）。
+ * 如果还留一个进程级单例，很容易在某个路由里顺手复用，
+ * 结果用错身份读写数据——那是这类项目最典型的事故。
  *
- * 用单例缓存：Route Handler 在同一进程内会被反复调用，
- * 每次 new 一个客户端会白白重建连接池。
+ * 仓储函数一律把客户端作为第一个参数传入，由路由决定用谁的身份。
  */
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { readSupabaseConfig } from "@/lib/env";
-
-let cached: SupabaseClient | null = null;
+export type Db = SupabaseClient;
 
 export class DatabaseNotConfiguredError extends Error {
   readonly missing: string[];
@@ -22,29 +21,4 @@ export class DatabaseNotConfiguredError extends Error {
     this.name = "DatabaseNotConfiguredError";
     this.missing = missing;
   }
-}
-
-export function getDb(): SupabaseClient {
-  if (cached) return cached;
-
-  const result = readSupabaseConfig();
-  if (!result.ok) throw new DatabaseNotConfiguredError(result.missing);
-
-  cached = createClient(result.config.url, result.config.key, {
-    auth: {
-      // 服务端无用户会话，关掉自动刷新与本地持久化
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-    global: {
-      headers: { "X-Client-Info": "codepilot-ai/server" },
-    },
-  });
-
-  return cached;
-}
-
-/** 仅用于测试：清空单例。 */
-export function resetDbClient(): void {
-  cached = null;
 }

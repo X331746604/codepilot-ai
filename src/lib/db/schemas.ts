@@ -77,3 +77,7 @@ export const listSnippetQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
   cursor: cursorParam,
 });
+
+export const updateProfileSchema = z.object({
+  defaultLanguage: z.enum(LANGUAGE_VALUES, { error: "不支持的编程语言" }),
+});

@@ -74,3 +74,26 @@ export function readSupabaseConfig(): SupabaseConfigResult {
 
   return { ok: true, config: { url, key } };
 }
+
+export type SupabasePublicConfig = { url: string; publishableKey: string };
+
+/**
+ * 浏览器与用户态客户端使用的配置。
+ *
+ * 这两个值是公开的：publishable key 只能做 RLS 允许的事，暴露它不等于交出数据库。
+ * 与之相对，`readSupabaseConfig()` 读的是 secret key，能绕过所有 RLS，
+ * 只允许脚本与服务端管理操作使用，绝不能出现在请求路径里。
+ */
+export function readSupabasePublicConfig(): SupabasePublicConfig | null {
+  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+  const publishableKey = (
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.SUPABASE_PUBLISHABLE_KEY ??
+    ""
+  ).trim();
+
+  if (!/^https?:\/\//.test(url) || !publishableKey) return null;
+  return { url, publishableKey };
+}

@@ -1,3 +1,4 @@
+import { authenticate } from "@/lib/auth/api";
 import { rangeToSince } from "@/lib/constants";
 import { createConversation, listConversations } from "@/lib/db/conversations";
 import { decodeCursor, type Cursor } from "@/lib/db/cursor";
@@ -20,6 +21,9 @@ function toSummary(row: ConversationRow): ConversationSummary {
 }
 
 export async function GET(request: Request) {
+  const auth = await authenticate();
+  if (!auth.ok) return auth.response;
+
   const url = new URL(request.url);
   const parsed = listQuerySchema.safeParse({
     limit: url.searchParams.get("limit") ?? undefined,
@@ -41,7 +45,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const page = await listConversations({
+    const page = await listConversations(auth.auth.db, {
       limit: parsed.data.limit,
       cursor,
       keyword: parsed.data.q,
@@ -58,6 +62,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await authenticate();
+  if (!auth.ok) return auth.response;
+
   let payload: unknown;
   try {
     payload = await request.json();
@@ -71,7 +78,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const row = await createConversation(parsed.data);
+    const row = await createConversation(auth.auth.db, parsed.data);
     return jsonOk({ conversation: toSummary(row) }, 201);
   } catch (error) {
     return dbErrorResponse(error);

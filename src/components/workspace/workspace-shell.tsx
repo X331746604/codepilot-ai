@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Menu, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { UserMenu } from "@/components/auth/user-menu";
 import { Brand } from "@/components/layout/brand";
 import { SnippetDialog, type SnippetDraft } from "@/components/snippets/snippet-dialog";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -37,14 +38,21 @@ import { extractCodeBlocks } from "@/lib/markdown/extract-code";
 
 const DEFAULT_GOALS: RefactorGoal[] = ["naming", "split", "readability"];
 
-export function WorkspaceShell() {
-  // 偏好是异步从 localStorage 读出来的（首帧是默认值），所以这里用「覆盖值」而不是
-  // 直接把它灌进 useState：否则读完偏好也改不动已经初始化好的 state。
+export function WorkspaceShell({
+  userEmail,
+  defaultLanguage,
+}: {
+  userEmail: string;
+  /** 来自 profiles 表，由服务端页面传入 */
+  defaultLanguage: Language;
+}) {
+  // 默认值是服务端算好的，但用户可能临时切走，所以用「覆盖值」而不是直接写进 state：
+  // 直接初始化 state 的话，切到别的会话也不会回到默认值。
   const [modeOverride, setModeOverride] = useState<TaskType | null>(null);
   const [languageOverride, setLanguageOverride] = useState<Language | null>(null);
   const { preferences } = usePreferences();
   const mode = modeOverride ?? preferences.defaultTaskType;
-  const language = languageOverride ?? preferences.defaultLanguage;
+  const language = languageOverride ?? defaultLanguage;
 
   const [prompt, setPrompt] = useState("");
   const [errorText, setErrorText] = useState("");
@@ -249,6 +257,7 @@ export function WorkspaceShell() {
             </Tooltip>
           ) : null}
           <ThemeToggle />
+          <UserMenu email={userEmail} />
         </div>
       </header>
 

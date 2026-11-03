@@ -21,17 +21,15 @@ describe("usePreferences", () => {
   it("首次渲染使用默认值，挂载后切换到存储里的真实值", async () => {
     localStorage.setItem(
       PREFERENCE_STORAGE_KEY,
-      JSON.stringify({ defaultLanguage: "python", temperature: 0.8 }),
+      JSON.stringify({ defaultTaskType: "refactor", temperature: 0.8 }),
     );
 
     const { result } = await setup();
 
     // 挂载完成后（renderHook 已 flush effect）应当读到 localStorage 的值
-    expect(result.current.preferences.defaultLanguage).toBe("python");
+    expect(result.current.preferences.defaultTaskType).toBe("refactor");
     expect(result.current.preferences.temperature).toBe(0.8);
-    expect(result.current.preferences.defaultTaskType).toBe(
-      DEFAULT_PREFERENCES.defaultTaskType,
-    );
+    expect(result.current.preferences.streaming).toBe(DEFAULT_PREFERENCES.streaming);
   });
 
   it("update 立即生效并写入 localStorage", async () => {
@@ -64,9 +62,9 @@ describe("usePreferences", () => {
     const { result } = await setup();
 
     act(() => {
-      result.current.update({ defaultLanguage: "go", temperature: 0.1 });
+      result.current.update({ temperature: 0.9, streaming: false });
     });
-    expect(result.current.preferences.defaultLanguage).toBe("go");
+    expect(result.current.preferences.streaming).toBe(false);
 
     act(() => {
       result.current.reset();

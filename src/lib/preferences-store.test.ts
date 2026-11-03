@@ -32,14 +32,14 @@ describe("createPreferenceStore", () => {
     expect(setup().store.getSnapshot()).toEqual(DEFAULT_PREFERENCES);
 
     const seeded = setup({
-      [PREFERENCE_STORAGE_KEY]: JSON.stringify({ defaultLanguage: "go", temperature: 0.9 }),
+      [PREFERENCE_STORAGE_KEY]: JSON.stringify({ temperature: 0.9, streaming: false }),
     });
-    expect(seeded.store.getSnapshot()).toMatchObject({ defaultLanguage: "go", temperature: 0.9 });
+    expect(seeded.store.getSnapshot()).toMatchObject({ temperature: 0.9, streaming: false });
   });
 
   it("服务端快照固定返回默认值（保证 SSR 与首帧一致）", () => {
     const { store } = setup({
-      [PREFERENCE_STORAGE_KEY]: JSON.stringify({ defaultLanguage: "go" }),
+      [PREFERENCE_STORAGE_KEY]: JSON.stringify({ temperature: 0.9 }),
     });
     expect(store.getServerSnapshot()).toEqual(DEFAULT_PREFERENCES);
   });
@@ -52,13 +52,13 @@ describe("createPreferenceStore", () => {
   it("update 合并字段、清洗非法值并写入存储", () => {
     const { store, storage } = setup();
 
-    const next = store.update({ temperature: 5, defaultLanguage: "python" });
+    const next = store.update({ temperature: 5, streaming: false });
 
     expect(next.temperature).toBe(1);
-    expect(next.defaultLanguage).toBe("python");
+    expect(next.streaming).toBe(false);
     expect(JSON.parse(storage.data.get(PREFERENCE_STORAGE_KEY) ?? "{}")).toMatchObject({
-      defaultLanguage: "python",
       temperature: 1,
+      streaming: false,
     });
   });
 
@@ -96,34 +96,34 @@ describe("createPreferenceStore", () => {
     const { store, storage, target } = setup();
     // 订阅才会挂上 storage 监听；同时先读一次把缓存填上，否则下一次读取自然是新值
     store.subscribe(() => {});
-    expect(store.getSnapshot().defaultLanguage).toBe(DEFAULT_PREFERENCES.defaultLanguage);
+    expect(store.getSnapshot().streaming).toBe(DEFAULT_PREFERENCES.streaming);
 
-    storage.data.set(PREFERENCE_STORAGE_KEY, JSON.stringify({ defaultLanguage: "java" }));
+    storage.data.set(PREFERENCE_STORAGE_KEY, JSON.stringify({ streaming: false }));
     target.dispatchEvent(storageEvent(PREFERENCE_STORAGE_KEY));
 
-    expect(store.getSnapshot().defaultLanguage).toBe("java");
+    expect(store.getSnapshot().streaming).toBe(false);
   });
 
   it("其它键的变化被忽略，不会白白触发重渲染", () => {
     const { store, storage, target } = setup();
     const listener = vi.fn();
     store.subscribe(listener);
-    expect(store.getSnapshot().defaultLanguage).toBe(DEFAULT_PREFERENCES.defaultLanguage);
+    expect(store.getSnapshot().streaming).toBe(DEFAULT_PREFERENCES.streaming);
 
-    storage.data.set(PREFERENCE_STORAGE_KEY, JSON.stringify({ defaultLanguage: "java" }));
+    storage.data.set(PREFERENCE_STORAGE_KEY, JSON.stringify({ streaming: false }));
     target.dispatchEvent(storageEvent("some-other-key"));
 
     expect(listener).not.toHaveBeenCalled();
     // 缓存没有失效，仍然是变更前的值
-    expect(store.getSnapshot().defaultLanguage).toBe(DEFAULT_PREFERENCES.defaultLanguage);
+    expect(store.getSnapshot().streaming).toBe(DEFAULT_PREFERENCES.streaming);
   });
 
   it("存储被 clear()（key 为 null）时也重新读取", () => {
     const { store, storage, target } = setup({
-      [PREFERENCE_STORAGE_KEY]: JSON.stringify({ defaultLanguage: "go" }),
+      [PREFERENCE_STORAGE_KEY]: JSON.stringify({ temperature: 0.9 }),
     });
     store.subscribe(() => {});
-    expect(store.getSnapshot().defaultLanguage).toBe("go");
+    expect(store.getSnapshot().temperature).toBe(0.9);
 
     storage.data.clear();
     target.dispatchEvent(storageEvent(null));
@@ -133,7 +133,7 @@ describe("createPreferenceStore", () => {
 
   it("reset 回到默认值并持久化", () => {
     const { store, storage } = setup();
-    store.update({ defaultLanguage: "go", streaming: false });
+    store.update({ temperature: 0.9, streaming: false });
 
     expect(store.reset()).toEqual(DEFAULT_PREFERENCES);
     expect(JSON.parse(storage.data.get(PREFERENCE_STORAGE_KEY) ?? "{}")).toEqual(

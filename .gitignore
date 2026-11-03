@@ -40,6 +40,8 @@ yarn-error.log*
 
 # 测试产物
 /test-results/
+# Playwright 登录态（含会话 cookie，绝不能进版本库）
+/e2e/.auth/
 /playwright-report/
 /blob-report/
 /.playwright/

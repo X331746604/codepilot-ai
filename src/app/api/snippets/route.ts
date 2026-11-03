@@ -1,3 +1,4 @@
+import { authenticate } from "@/lib/auth/api";
 import { decodeCursor, type Cursor } from "@/lib/db/cursor";
 import { dbErrorResponse, jsonError, jsonOk } from "@/lib/db/http";
 import { createSnippetSchema, listSnippetQuerySchema } from "@/lib/db/schemas";
@@ -7,6 +8,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  const auth = await authenticate();
+  if (!auth.ok) return auth.response;
+
   const url = new URL(request.url);
   const parsed = listSnippetQuerySchema.safeParse({
     q: url.searchParams.get("q") ?? undefined,
@@ -28,7 +32,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const page = await listSnippets({ ...parsed.data, cursor });
+    const page = await listSnippets(auth.auth.db, { ...parsed.data, cursor });
     return jsonOk({ snippets: page.rows, nextCursor: page.nextCursor });
   } catch (error) {
     return dbErrorResponse(error);
@@ -36,6 +40,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await authenticate();
+  if (!auth.ok) return auth.response;
+
   let payload: unknown;
   try {
     payload = await request.json();
@@ -49,7 +56,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const row = await createSnippet(parsed.data);
+    const row = await createSnippet(auth.auth.db, parsed.data);
     return jsonOk({ snippet: row }, 201);
   } catch (error) {
     return dbErrorResponse(error);

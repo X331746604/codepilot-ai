@@ -1,34 +1,60 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { DatabaseNotConfiguredError } from "@/lib/db/client";
 
 import { createAiRoute } from "./handler";
 
 /**
  * 路由编排层的契约测试。
  *
- * 只覆盖"不碰数据库、不调模型"的那部分：校验、限流前置顺序、配置缺失。
- * 真实调用需要模型服务与数据库，交给 e2e 主链路。
+ * 覆盖"不碰真实数据库、不调模型"的那部分：鉴权、校验、限流前置顺序、配置缺失。
+ * 真实链路（带会话、带上游）交给 e2e。
  */
 
+const hoisted = vi.hoisted(() => ({
+  session: null as null | { supabase: unknown; user: { id: string; email: string } },
+}));
+
+// 鉴权依赖 cookie 与 auth 服务，单测里直接替换掉
+vi.mock("@/lib/auth/server", () => ({
+  getSession: async () => hoisted.session,
+}));
+
 const AI_ENV = ["AI_API_KEY", "AI_BASE_URL", "AI_MODEL", "AI_TIMEOUT_MS"] as const;
-const DB_ENV = ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"] as const;
 
 const saved: Record<string, string | undefined> = {};
 
+/** 故意让任何一次库访问都失败：这能证明校验在落库之前就返回了。 */
+function brokenDb() {
+  return {
+    from() {
+      throw new DatabaseNotConfiguredError(["NEXT_PUBLIC_SUPABASE_URL"]);
+    },
+  };
+}
+
+function signIn() {
+  hoisted.session = { supabase: brokenDb(), user: { id: "user-1", email: "a@example.com" } };
+}
+
 beforeEach(() => {
-  for (const key of [...AI_ENV, ...DB_ENV]) {
+  for (const key of AI_ENV) {
     saved[key] = process.env[key];
     delete process.env[key];
   }
   process.env.AI_API_KEY = "test-key";
   process.env.AI_BASE_URL = "https://example.test/v1";
   process.env.AI_MODEL = "test-model";
+
+  signIn();
 });
 
 afterEach(() => {
-  for (const key of [...AI_ENV, ...DB_ENV]) {
+  for (const key of AI_ENV) {
     if (saved[key] === undefined) delete process.env[key];
     else process.env[key] = saved[key];
   }
+  hoisted.session = null;
 });
 
 function post(body: unknown) {
@@ -42,6 +68,17 @@ function post(body: unknown) {
   );
 }
 
+describe("鉴权先于一切", () => {
+  it("未登录直接 401，连请求体都不解析", async () => {
+    hoisted.session = null;
+
+    const response = await post("{这不是 JSON");
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: { code: "UNAUTHORIZED" } });
+  });
+});
+
 describe("请求体校验", () => {
   it("非 JSON 返回 400 BAD_REQUEST", async () => {
     const response = await post("{oops");
@@ -53,7 +90,10 @@ describe("请求体校验", () => {
     const response = await post({ prompt: "   ", language: "typescript" });
     expect(response.status).toBe(400);
 
-    const body = (await response.json()) as { error: { code: string }; issues: Array<{ path: string }> };
+    const body = (await response.json()) as {
+      error: { code: string };
+      issues: Array<{ path: string }>;
+    };
     expect(body.error.code).toBe("VALIDATION");
     expect(body.issues[0]?.path).toBe("prompt");
   });
@@ -100,7 +140,7 @@ describe("配置缺失", () => {
     expect(body.error.message).toContain("AI_API_KEY");
   });
 
-  it("模型已配置但数据库未配置时，说明校验已通过、失败发生在落库阶段", async () => {
+  it("通过校验后落库失败时，说明失败发生在数据库而不是输入", async () => {
     const response = await post({ prompt: "x", language: "go", options: { temperature: 0.5 } });
 
     expect(response.status).toBe(503);

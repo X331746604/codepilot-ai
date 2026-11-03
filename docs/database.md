@@ -11,7 +11,7 @@
 | 会话接口 | ✅ `/api/conversations`（列表/新建/重命名/删除/消息） |
 | UI 接入（侧栏会话列表） | ✅ 新建 / 切换 / 重命名 / 删除 + 刷新恢复 |
 | 搜索与分页 | ✅ 游标分页 + 标题搜索 + 时间范围（见 §8） |
-| 用户隔离（RLS 策略） | ⏳ 任务 13 |
+| 认证与 RLS 策略 | ⏳ `0004_auth.sql` 已写好，待执行（见 [auth.md](auth.md)） |
 
 ### 持久化的职责划分
 
@@ -161,6 +161,20 @@ NODE_USE_ENV_PROXY=1 HTTPS_PROXY=http://127.0.0.1:7897 pnpm dev
 - 每次结构变更新增一个文件，而不是改 `0001`；
 - 幂等写法（`if not exists`、`drop trigger if exists`）优先，便于在测试库反复执行；
 - 真实项目应使用 Supabase CLI 的迁移工作流，本项目为降低学习成本采用"SQL Editor 手工执行 + 仓库留档"。
+
+## 7.5 认证相关变更（`0004_auth.sql`）
+
+这一份改动最多，单独说明：
+
+1. **新增 `profiles` 表**：主键即 `auth.users.id`，存邮箱快照、默认语言、创建时间。
+   注册时由 `handle_new_user()` 触发器自动建档（`security definer`，因为 anon 没有 insert 权限）。
+2. **三张业务表的 `owner_id` 改为 `not null` 且默认 `auth.uid()`**。
+   接入认证前产生的数据无法归属，迁移里直接删除——留着只会变成谁都读不到也删不掉的幽灵行。
+3. **四类操作各建一条策略**，条件统一是 `owner_id = auth.uid()`；
+   `messages` 的 insert 额外用 `exists` 校验父会话归属。
+4. **索引最左列改成 `owner_id`**：现在所有查询都带用户过滤，原索引用不上。
+
+策略的设计理由与越权返回码的选择见 [docs/auth.md](docs/auth.md)。
 
 ## 8. 分页与搜索索引（`0003_search_indexes.sql`）
 

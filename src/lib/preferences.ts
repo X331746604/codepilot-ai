@@ -1,11 +1,12 @@
 /**
- * 用户偏好。
+ * 用户偏好（仅限**本机 UI 与模型参数**）。
  *
  * 存储边界（需求文档 FR-9.2）：
- * - 主题、默认值、模型参数这类偏好存在 **localStorage**；
- * - 将来接入账号体系后，默认语言等业务偏好应迁到 `profiles` 表。
- *   当前没有登录态，写进数据库只能挂在一个匿名的 owner_id 上，
- *   反而会让"刷新还在"这件事变成假的——换个浏览器就没了。
+ * - 主题、默认任务类型、温度、流式开关 → 存 **localStorage**，换设备不同步；
+ * - 默认语言这类**业务偏好** → 存 `profiles` 表（见 `/api/profile`）。
+ *
+ * 两条线分开的理由：默认语言影响的是"生成什么代码"，属于账号数据，
+ * 换台电脑必须还在；而温度和主题是个人手感，跟着浏览器走更自然。
  *
  * 这里刻意不引入 zod：schema 在服务端用，客户端再打包一份只会白增体积。
  * 手写的 sanitize 反而是更合适的工具——它的职责是"坏数据也要能用"，
@@ -13,12 +14,9 @@
  */
 
 import {
-  DEFAULT_LANGUAGE,
   DEFAULT_TASK_TYPE,
   DEFAULT_TEMPERATURE,
-  LANGUAGE_VALUES,
   TASK_TYPE_VALUES,
-  type Language,
   type TaskType,
 } from "@/lib/constants";
 
@@ -27,8 +25,6 @@ export const PREFERENCE_STORAGE_KEY = "codepilot.preferences.v1";
 export type Preferences = {
   /** 打开工作台时默认选中的任务类型 */
   defaultTaskType: TaskType;
-  /** 打开工作台时默认选中的语言 */
-  defaultLanguage: Language;
   /** 采样温度，0 最保守、1 最发散 */
   temperature: number;
   /** 关闭后上游改为非流式，浏览器侧仍按同一套事件处理 */
@@ -37,7 +33,6 @@ export type Preferences = {
 
 export const DEFAULT_PREFERENCES: Preferences = {
   defaultTaskType: DEFAULT_TASK_TYPE,
-  defaultLanguage: DEFAULT_LANGUAGE,
   // 0.3 是代码场景的常见取值：比 0 更有变化，又不至于把确定性丢掉
   temperature: DEFAULT_TEMPERATURE,
   streaming: true,
@@ -50,10 +45,6 @@ export type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
 
 function isTaskType(value: unknown): value is TaskType {
   return typeof value === "string" && (TASK_TYPE_VALUES as readonly string[]).includes(value);
-}
-
-function isLanguage(value: unknown): value is Language {
-  return typeof value === "string" && (LANGUAGE_VALUES as readonly string[]).includes(value);
 }
 
 /** 保留一位小数：滑块的取值以 0.1 为步长，避免 0.30000000000000004 这类噪声。 */
@@ -82,9 +73,6 @@ export function sanitizePreferences(raw: unknown): Preferences {
     defaultTaskType: isTaskType(source.defaultTaskType)
       ? source.defaultTaskType
       : DEFAULT_PREFERENCES.defaultTaskType,
-    defaultLanguage: isLanguage(source.defaultLanguage)
-      ? source.defaultLanguage
-      : DEFAULT_PREFERENCES.defaultLanguage,
     temperature,
     streaming:
       typeof source.streaming === "boolean" ? source.streaming : DEFAULT_PREFERENCES.streaming,

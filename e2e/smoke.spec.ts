@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * 冒烟用例：只验证"页面能打开、骨架在、关键控件可交互"。
- * 不依赖数据库与模型服务，因此在任何环境下都应当通过——
- * 它同时也是"服务起没起来"的最快检查。
+ * 冒烟用例：页面能打开、骨架在、关键控件可交互、设置真的生效。
+ *
+ * 由 `auth.setup.ts` 先准备好登录态（storageState），所以这里默认是已登录视角；
+ * 未登录的行为在 `auth.spec.ts` 里单独验证。
  */
 
 test.describe("首页", () => {
@@ -29,7 +30,7 @@ test.describe("工作台骨架", () => {
     await page.goto("/workspace");
 
     await expect(page.locator("#composer-prompt")).toBeVisible();
-    await expect(page.locator("#composer-language")).toContainText("TypeScript");
+    await expect(page.locator("#composer-language")).not.toBeEmpty();
 
     const tabs = page.getByRole("tab");
     await expect(tabs).toHaveCount(4);
@@ -85,9 +86,10 @@ test.describe("代码片段页", () => {
 });
 
 test.describe("设置页", () => {
-  test("展示四类设置与服务端变量说明，且不泄露真实值", async ({ page }) => {
+  test("展示账号、默认值、模型调用、外观与服务端变量说明，且不泄露真实值", async ({ page }) => {
     await page.goto("/settings");
 
+    await expect(page.getByRole("heading", { name: "账号" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "默认值" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "模型调用" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "外观" })).toBeVisible();
@@ -100,20 +102,28 @@ test.describe("设置页", () => {
     expect(body).not.toMatch(/sb_secret_[A-Za-z0-9]{10,}/);
   });
 
-  test("修改默认语言后刷新仍在，并作用于工作台", async ({ page }) => {
+  test("修改默认语言写入数据库，刷新后仍在并作用于工作台", async ({ page }) => {
     await page.goto("/settings");
 
     await page.getByRole("combobox", { name: "默认语言" }).click();
-    await page.getByRole("option", { name: "Python" }).click();
+    await page.getByRole("option", { name: "Go" }).click();
+    await expect(page.getByRole("combobox", { name: "默认语言" })).toContainText("Go");
 
+    // 刷新后仍然是 Go —— 说明存的是数据库，不是内存
     await page.reload();
-    await expect(page.getByRole("combobox", { name: "默认语言" })).toContainText("Python");
+    await expect(page.getByRole("combobox", { name: "默认语言" })).toContainText("Go");
 
     await page.goto("/workspace");
-    await expect(page.locator("#composer-language")).toContainText("Python");
+    await expect(page.locator("#composer-language")).toContainText("Go");
+
+    // 还原，避免影响后续用例
+    await page.goto("/settings");
+    await page.getByRole("combobox", { name: "默认语言" }).click();
+    await page.getByRole("option", { name: "TypeScript" }).click();
+    await expect(page.getByRole("combobox", { name: "默认语言" })).toContainText("TypeScript");
   });
 
-  test("流式开关可关闭并保持", async ({ page }) => {
+  test("流式开关可关闭并保持（本机偏好）", async ({ page }) => {
     await page.goto("/settings");
 
     const toggle = page.getByRole("switch", { name: "流式输出" });
@@ -128,34 +138,39 @@ test.describe("设置页", () => {
     );
   });
 
-  test("恢复默认清空偏好", async ({ page }) => {
+  test("恢复默认只重置本机偏好，不动账号的默认语言", async ({ page }) => {
     await page.goto("/settings");
 
-    await page.getByRole("combobox", { name: "默认语言" }).click();
-    await page.getByRole("option", { name: "Go" }).click();
-    await expect(page.getByRole("combobox", { name: "默认语言" })).toContainText("Go");
+    await page.getByRole("switch", { name: "流式输出" }).click();
+    await expect(page.getByRole("switch", { name: "流式输出" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
 
     await page.getByRole("button", { name: /恢复默认/ }).click();
-    await expect(page.getByRole("combobox", { name: "默认语言" })).toContainText("TypeScript");
+    await expect(page.getByRole("switch", { name: "流式输出" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    // 默认语言属于账号偏好，不受"恢复默认"影响
+    await expect(page.getByRole("combobox", { name: "默认语言" })).toBeVisible();
   });
 });
 
 test.describe("设置作用于真实请求", () => {
-  test("温度与流式开关随请求体下发", async ({ page }) => {
-    // 先写入偏好，再打开页面：模拟"上次已经设置好"
+  test("温度与流式开关随请求体下发，语言取自账号资料", async ({ page, request }) => {
+    // 账号偏好走接口改（服务端存储），本机偏好走 localStorage
+    const patched = await request.patch("/api/profile", { data: { defaultLanguage: "go" } });
+    expect(patched.ok()).toBe(true);
+
     await page.addInitScript(() => {
       localStorage.setItem(
         "codepilot.preferences.v1",
-        JSON.stringify({
-          defaultTaskType: "generate",
-          defaultLanguage: "go",
-          temperature: 0.7,
-          streaming: false,
-        }),
+        JSON.stringify({ defaultTaskType: "generate", temperature: 0.7, streaming: false }),
       );
     });
 
-    // 拦下真实调用：这条用例只验证"请求长什么样"，不需要模型与数据库
+    // 拦下真实调用：这条用例只验证"请求长什么样"，不需要模型
     let captured: { options?: { temperature?: number; stream?: boolean }; language?: string } | null =
       null;
     await page.route("**/api/ai/generate", async (route) => {
@@ -173,7 +188,6 @@ test.describe("设置作用于真实请求", () => {
     });
 
     await page.goto("/workspace");
-    // 默认语言也该来自偏好
     await expect(page.locator("#composer-language")).toContainText("Go");
 
     await page.locator("#composer-prompt").fill("写个函数");
@@ -182,6 +196,8 @@ test.describe("设置作用于真实请求", () => {
     await expect.poll(() => captured?.options ?? null).not.toBeNull();
     expect(captured!.options).toEqual({ temperature: 0.7, stream: false });
     expect(captured!.language).toBe("go");
+
+    await request.patch("/api/profile", { data: { defaultLanguage: "typescript" } });
   });
 });
 

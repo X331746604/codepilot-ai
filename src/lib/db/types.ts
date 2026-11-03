@@ -52,3 +52,19 @@ export type SnippetRow = {
   created_at: string;
   updated_at: string;
 };
+
+/** 与 auth.users 一一对应的公开资料。 */
+export type ProfileRow = {
+  id: string;
+  email: string;
+  default_language: string;
+  created_at: string;
+  updated_at: string;
+};
+
+/** 接口返回给前端的资料视图，不含任何内部标识以外的东西。 */
+export type ProfileView = {
+  email: string;
+  defaultLanguage: string;
+  createdAt: string;
+};

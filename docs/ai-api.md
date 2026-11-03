@@ -155,11 +155,15 @@ GET /api/conversations?limit=10&q=Hook&range=7d
 
 | HTTP | code | 含义 | 能否重试 |
 |---|---|---|---|
+| 401 | `UNAUTHORIZED` | 未登录或会话已失效 | 否（先去登录） |
 | 400 | `BAD_REQUEST` | 请求体不是合法 JSON | 否 |
 | 400 | `VALIDATION` | 字段校验失败，`issues` 给出字段级原因 | 否 |
 | 413 | `PAYLOAD_TOO_LARGE` | 请求体超过 160 KB（约 16 万字符） | 否 |
 | 429 | `RATE_LIMIT` | 触发限流，响应头带 `Retry-After`（秒） | 是（等待后） |
 | 503 | `CONFIG` | 服务端缺少环境变量 | 否 |
+
+所有 `/api/*`（除 `/api/health`）都要求登录：无有效会话时**在解析请求体之前**就返回 401，
+未登录请求不消耗限流额度，也不会读数据库。
 
 流内 `error` 事件的 `code` 另有一组取值：`AUTH` / `QUOTA` / `TIMEOUT` / `UPSTREAM` / `INVALID_RESPONSE` / `CANCELED`，其 `retryable` 字段指示前端是否适合提供"重试"按钮。
 

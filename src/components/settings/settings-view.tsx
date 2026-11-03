@@ -1,11 +1,12 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
+import { UserMenu } from "@/components/auth/user-menu";
 import { Brand } from "@/components/layout/brand";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -45,12 +46,9 @@ const ENV_ROWS = [
     example: "10",
   },
   { name: "AI_RATE_LIMIT_PER_HOUR", purpose: "每 IP 每小时请求上限", example: "60" },
-  { name: "SUPABASE_URL", purpose: "数据库项目地址", example: "https://xxx.supabase.co" },
-  {
-    name: "SUPABASE_SECRET_KEY",
-    purpose: "服务端数据库密钥（绕过 RLS）",
-    example: "sb_secret_…",
-  },
+  { name: "NEXT_PUBLIC_SUPABASE_URL", purpose: "数据库项目地址（可公开）", example: "https://xxx.supabase.co" },
+  { name: "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", purpose: "浏览器端密钥（受 RLS 限制）", example: "sb_publishable_…" },
+  { name: "SUPABASE_SECRET_KEY", purpose: "服务端管理密钥（绕过 RLS，仅脚本使用）", example: "sb_secret_…" },
 ] as const;
 
 const noopSubscribe = () => () => {};
@@ -97,9 +95,30 @@ function Row({
   );
 }
 
-export function SettingsView() {
+function formatDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "未知";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
+}
+
+export function SettingsView({
+  email,
+  createdAt,
+  defaultLanguage,
+}: {
+  email: string;
+  createdAt: string;
+  /** 来自 profiles 表，改动会写回数据库 */
+  defaultLanguage: string;
+}) {
   const { preferences, update, reset } = usePreferences();
   const { theme, setTheme } = useTheme();
+
+  // 默认语言存在服务端，先本地乐观更新，失败再回滚
+  const [language, setLanguage] = useState(defaultLanguage);
+  const [savingLanguage, setSavingLanguage] = useState(false);
 
   // 服务端拿不到用户主题，水合前不要给按钮加"选中"态，否则会出现两次高亮
   const mounted = useSyncExternalStore(
@@ -107,6 +126,32 @@ export function SettingsView() {
     () => true,
     () => false,
   );
+
+  async function handleLanguageChange(next: string) {
+    const previous = language;
+    setLanguage(next);
+    setSavingLanguage(true);
+
+    try {
+      const response = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ defaultLanguage: next }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+        throw new Error(data.error?.message ?? "保存失败");
+      }
+
+      toast.success(`默认语言已改为 ${getLanguageLabel(next)}`);
+    } catch (cause) {
+      setLanguage(previous);
+      toast.error(cause instanceof Error ? cause.message : "保存失败，请重试");
+    } finally {
+      setSavingLanguage(false);
+    }
+  }
 
   function handleReset() {
     reset();
@@ -128,16 +173,52 @@ export function SettingsView() {
               </Link>
             </Button>
             <ThemeToggle />
+            <UserMenu email={email} />
           </div>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-4 py-6 sm:px-6">
-        <p className="text-xs text-muted-foreground">
-          更改会立即保存到本机浏览器，不需要点「保存」。换设备或换浏览器不会带上这些偏好。
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          本页的偏好分两类：<strong className="font-medium text-foreground">账号偏好</strong>
+          存在数据库、换设备也在；<strong className="font-medium text-foreground">本机偏好</strong>
+          存在浏览器里，不会同步。
         </p>
 
-        <Section title="默认值" description="新建会话时使用的初始值，只影响之后打开的会话。">
+        <Section title="账号" description="账号偏好保存在数据库，跟随账号而不是浏览器。">
+          <Row label="邮箱" description="登录凭据，修改需要走 Supabase 后台">
+            <span className="font-mono text-xs">{email}</span>
+          </Row>
+
+          <Row label="注册时间" description="账号创建日期">
+            <span className="font-mono text-xs">{formatDate(createdAt)}</span>
+          </Row>
+
+          <Row
+            label="默认语言"
+            description="新建会话与片段时使用；改动会立即写入数据库"
+            htmlFor="pref-language"
+          >
+            <Select
+              value={language}
+              onValueChange={(value) => void handleLanguageChange(value)}
+              disabled={savingLanguage}
+            >
+              <SelectTrigger id="pref-language" className="w-[11rem]" aria-label="默认语言">
+                <SelectValue>{getLanguageLabel(language)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {LANGUAGES.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Row>
+        </Section>
+
+        <Section title="默认值" description="只存在本机浏览器，换设备不会带上。">
           <Row label="默认任务类型" description="打开工作台时默认选中的标签页" htmlFor="pref-task">
             <Select
               value={preferences.defaultTaskType}
@@ -150,26 +231,6 @@ export function SettingsView() {
               </SelectTrigger>
               <SelectContent>
                 {TASK_TYPES.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Row>
-
-          <Row label="默认语言" description="提交请求时使用的编程语言，也用于新建片段" htmlFor="pref-language">
-            <Select
-              value={preferences.defaultLanguage}
-              onValueChange={(value) =>
-                update({ defaultLanguage: value as typeof preferences.defaultLanguage })
-              }
-            >
-              <SelectTrigger id="pref-language" className="w-[11rem]" aria-label="默认语言">
-                <SelectValue>{getLanguageLabel(preferences.defaultLanguage)}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {LANGUAGES.map((item) => (
                   <SelectItem key={item.value} value={item.value}>
                     {item.label}
                   </SelectItem>
@@ -272,6 +333,10 @@ export function SettingsView() {
               本地实际值写在 <code className="font-mono">.env.local</code>（已被 Git 忽略）。
             </p>
             <p>
+              <code className="font-mono">SUPABASE_SECRET_KEY</code> 能绕过所有 RLS，
+              只允许脚本与管理操作使用——请求路径一律走用户态客户端，不碰它。
+            </p>
+            <p>
               切换模型供应商只需改 <code className="font-mono">AI_BASE_URL</code> /{" "}
               <code className="font-mono">AI_API_KEY</code> /{" "}
               <code className="font-mono">AI_MODEL</code> 三项，前提是对方兼容 OpenAI 协议。
@@ -284,7 +349,8 @@ export function SettingsView() {
 
         <div className="flex items-center justify-between gap-4 rounded-xl border p-4">
           <p className="text-xs leading-relaxed text-muted-foreground">
-            恢复默认值只会清掉本页的设置，不影响会话、消息与代码片段。
+            恢复默认只重置本机偏好（任务类型、温度、流式开关、主题），
+            不影响账号偏好、会话、消息与代码片段。
           </p>
           <Button variant="outline" size="sm" onClick={handleReset} className="shrink-0">
             <RotateCcw data-icon="inline-start" />

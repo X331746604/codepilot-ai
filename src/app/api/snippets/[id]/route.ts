@@ -1,3 +1,4 @@
+import { authenticate } from "@/lib/auth/api";
 import { dbErrorResponse, jsonError, jsonOk } from "@/lib/db/http";
 import { idSchema, updateSnippetSchema } from "@/lib/db/schemas";
 import { deleteSnippet, getSnippet, updateSnippet } from "@/lib/db/snippets";
@@ -13,11 +14,14 @@ async function resolveId(context: RouteContext): Promise<string | null> {
 }
 
 export async function GET(_request: Request, context: RouteContext) {
+  const auth = await authenticate();
+  if (!auth.ok) return auth.response;
+
   const id = await resolveId(context);
   if (!id) return jsonError(400, "VALIDATION", "片段 ID 不合法");
 
   try {
-    const row = await getSnippet(id);
+    const row = await getSnippet(auth.auth.db, id);
     if (!row) return jsonError(404, "NOT_FOUND", "片段不存在或已被删除");
     return jsonOk({ snippet: row });
   } catch (error) {
@@ -26,6 +30,9 @@ export async function GET(_request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
+  const auth = await authenticate();
+  if (!auth.ok) return auth.response;
+
   const id = await resolveId(context);
   if (!id) return jsonError(400, "VALIDATION", "片段 ID 不合法");
 
@@ -42,7 +49,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   try {
-    const row = await updateSnippet(id, parsed.data);
+    const row = await updateSnippet(auth.auth.db, id, parsed.data);
     if (!row) return jsonError(404, "NOT_FOUND", "片段不存在或已被删除");
     return jsonOk({ snippet: row });
   } catch (error) {
@@ -51,11 +58,14 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
+  const auth = await authenticate();
+  if (!auth.ok) return auth.response;
+
   const id = await resolveId(context);
   if (!id) return jsonError(400, "VALIDATION", "片段 ID 不合法");
 
   try {
-    const removed = await deleteSnippet(id);
+    const removed = await deleteSnippet(auth.auth.db, id);
     if (!removed) return jsonError(404, "NOT_FOUND", "片段不存在或已被删除");
     return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
   } catch (error) {

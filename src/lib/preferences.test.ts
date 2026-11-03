@@ -38,12 +38,10 @@ describe("sanitizePreferences", () => {
   it("逐字段回退：一个字段坏掉不影响其它字段", () => {
     const result = sanitizePreferences({
       defaultTaskType: "chat",
-      defaultLanguage: "python",
       temperature: 0.8,
       streaming: false,
     });
     expect(result.defaultTaskType).toBe(DEFAULT_PREFERENCES.defaultTaskType);
-    expect(result.defaultLanguage).toBe("python");
     expect(result.temperature).toBe(0.8);
     expect(result.streaming).toBe(false);
   });
@@ -51,12 +49,7 @@ describe("sanitizePreferences", () => {
   it("未知字段被丢弃，不会写回存储", () => {
     const result = sanitizePreferences({ apiKey: "sk-should-not-persist", streaming: true });
     expect(result).not.toHaveProperty("apiKey");
-    expect(Object.keys(result).sort()).toEqual([
-      "defaultLanguage",
-      "defaultTaskType",
-      "streaming",
-      "temperature",
-    ]);
+    expect(Object.keys(result).sort()).toEqual(["defaultTaskType", "streaming", "temperature"]);
   });
 
   it("温度超出范围时夹到 0–1", () => {
@@ -109,20 +102,29 @@ describe("readPreferences", () => {
 
   it("读到部分可用的数据时保留可用字段", () => {
     const storage = fakeStorage({
-      [PREFERENCE_STORAGE_KEY]: JSON.stringify({ defaultLanguage: "go", temperature: 0.9 }),
+      [PREFERENCE_STORAGE_KEY]: JSON.stringify({ temperature: 0.9, defaultTaskType: "refactor" }),
     });
     expect(readPreferences(storage)).toMatchObject({
-      defaultLanguage: "go",
       temperature: 0.9,
-      defaultTaskType: DEFAULT_PREFERENCES.defaultTaskType,
+      defaultTaskType: "refactor",
+      streaming: DEFAULT_PREFERENCES.streaming,
     });
+  });
+
+  it("旧版本遗留的 defaultLanguage 字段被忽略（它已迁到 profiles 表）", () => {
+    const storage = fakeStorage({
+      [PREFERENCE_STORAGE_KEY]: JSON.stringify({ defaultLanguage: "go", temperature: 0.5 }),
+    });
+    const result = readPreferences(storage);
+    expect(result).not.toHaveProperty("defaultLanguage");
+    expect(result.temperature).toBe(0.5);
   });
 });
 
 describe("writePreferences", () => {
   it("写入后能原样读回", () => {
     const storage = fakeStorage();
-    const next = { ...DEFAULT_PREFERENCES, defaultLanguage: "python" as const, temperature: 0.7 };
+    const next = { ...DEFAULT_PREFERENCES, defaultTaskType: "debug" as const, temperature: 0.7 };
 
     expect(writePreferences(next, storage)).toBe(true);
     expect(readPreferences(storage)).toEqual(next);
