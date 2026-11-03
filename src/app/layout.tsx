@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import "./globals.css";
@@ -40,7 +41,17 @@ export const viewport: Viewport = {
   colorScheme: "light dark",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+/**
+ * CSP 的 nonce 必须在渲染期从请求头里取，而静态生成的页面拿不到请求头。
+ * 本项目的页面全部依赖会话态，本来也静态不了，因此整站显式走动态渲染。
+ */
+export const dynamic = "force-dynamic";
+
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // proxy 在每个 HTML 请求上生成 nonce；next-themes 会注入一段内联脚本
+  // 用来在 hydration 前设置主题，它拿不到 Next 自动附加的 nonce，需要手动传。
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="zh-CN"
@@ -55,6 +66,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
+          nonce={nonce}
         >
           <TooltipProvider delayDuration={200}>
             {children}

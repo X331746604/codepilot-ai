@@ -21,6 +21,34 @@ const nextConfig: NextConfig = {
   // 开发模式的悬浮指示器会压在侧栏底部的「代码片段」入口上，截图与录屏时很碍事。
   // 只在 dev 生效，生产构建本来就没有它。
   devIndicators: false,
+
+  /**
+   * 安全响应头。CSP 不在这里配——它需要每个请求一个 nonce，只能放在 proxy 里；
+   * 两处都设置会互相覆盖，nonce 版本会被这段静态值盖掉。
+   */
+  async headers() {
+    const base = [
+      // 禁止浏览器猜 MIME，避免把上传/返回的内容当脚本执行
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      // 跨站请求不带完整路径，避免把会话相关 URL 泄露给第三方
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      // 与 CSP 的 frame-ancestors 重复，但老浏览器不认后者
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
+      { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+      { key: "X-DNS-Prefetch-Control", value: "off" },
+    ];
+
+    // HSTS 只在生产下发：本地是 http，下发既无意义，也可能把 localhost 钉死
+    if (process.env.NODE_ENV === "production") {
+      base.push({
+        key: "Strict-Transport-Security",
+        value: "max-age=63072000; includeSubDomains; preload",
+      });
+    }
+
+    return [{ source: "/:path*", headers: base }];
+  },
 };
 
 export default nextConfig;

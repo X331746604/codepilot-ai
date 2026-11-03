@@ -207,3 +207,49 @@ test.describe("未匹配的路由", () => {
     expect(response?.status()).toBe(404);
   });
 });
+
+test.describe("安全响应头", () => {
+  test("CSP 使用 nonce 且脚本不允许 unsafe-inline，其余基础头齐全", async ({ request }) => {
+    const response = await request.get("/");
+    expect(response.status()).toBe(200);
+
+    const headers = response.headers();
+    const csp = headers["content-security-policy"] ?? "";
+    const scriptSrc = csp
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("script-src"));
+
+    expect(scriptSrc, "script-src 必须存在").toBeTruthy();
+    expect(scriptSrc).toMatch(/nonce-[A-Za-z0-9+/=]+/);
+    expect(scriptSrc).toContain("'strict-dynamic'");
+    // 关键断言：脚本不能用 unsafe-inline，否则 nonce 就形同虚设
+    expect(scriptSrc).not.toContain("unsafe-inline");
+
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("base-uri 'self'");
+
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["x-frame-options"]).toBe("DENY");
+    expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+    expect(headers["cross-origin-opener-policy"]).toBe("same-origin");
+    expect(headers["permissions-policy"]).toContain("camera=()");
+  });
+
+  test("每次请求的 nonce 都不同，且真的注入到了 HTML 的脚本上", async ({ request }) => {
+    const first = await request.get("/");
+    const second = await request.get("/");
+
+    const readNonce = (csp: string) => /'nonce-([^']+)'/.exec(csp)?.[1];
+    const nonceA = readNonce(first.headers()["content-security-policy"] ?? "");
+    const nonceB = readNonce(second.headers()["content-security-policy"] ?? "");
+
+    expect(nonceA).toBeTruthy();
+    expect(nonceB).toBeTruthy();
+    expect(nonceA).not.toBe(nonceB);
+
+    const html = await first.text();
+    expect(html).toContain(`nonce="${nonceA}"`);
+  });
+});
