@@ -24,6 +24,25 @@ const languageSchema = z.enum(LANGUAGE_VALUES, { error: "不支持的编程语�
  */
 const conversationIdSchema = z.uuid("会话 ID 不合法").optional();
 
+/**
+ * 模型调用参数，由前端按用户偏好下发。
+ *
+ * 前端已经清洗过一遍，这里仍然校验：偏好存在 localStorage 里，
+ * 用户手动改一下就能绕过一切前端限制，服务端不能假设它合法。
+ */
+export const modelOptionsSchema = z
+  .object({
+    temperature: z
+      .number()
+      .min(0, "temperature 需在 0–1 之间")
+      .max(1, "temperature 需在 0–1 之间")
+      .optional(),
+    stream: z.boolean().optional(),
+  })
+  .optional();
+
+export type ModelOptions = z.infer<typeof modelOptionsSchema>;
+
 export const generateInputSchema = z.object({
   prompt: z
     .string()
@@ -32,6 +51,7 @@ export const generateInputSchema = z.object({
     .max(LIMITS.prompt, `需求描述不能超过 ${LIMITS.prompt} 字`),
   language: languageSchema,
   conversationId: conversationIdSchema,
+  options: modelOptionsSchema,
   constraint: z
     .string()
     .trim()
@@ -47,6 +67,7 @@ export const explainInputSchema = z.object({
     .max(LIMITS.code, `代码不能超过 ${LIMITS.code} 字`),
   language: languageSchema,
   conversationId: conversationIdSchema,
+  options: modelOptionsSchema,
   focus: z.string().trim().max(200, "关注点描述过长").optional(),
 });
 
@@ -64,6 +85,7 @@ export const debugInputSchema = z.object({
   environment: z.string().trim().max(200, "运行环境描述过长").optional(),
   language: languageSchema,
   conversationId: conversationIdSchema,
+  options: modelOptionsSchema,
 });
 
 export const refactorGoalValues = REFACTOR_GOAL_VALUES;
@@ -82,6 +104,7 @@ export const refactorInputSchema = z.object({
     .max(refactorGoalValues.length),
   language: languageSchema,
   conversationId: conversationIdSchema,
+  options: modelOptionsSchema,
 });
 
 export type GenerateInput = z.infer<typeof generateInputSchema>;

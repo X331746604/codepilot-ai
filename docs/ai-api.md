@@ -46,6 +46,27 @@
 
 > 早期版本由客户端上传 `history` 数组。接入数据库后该字段已移除：历史必须是服务端可核验的，不能由客户端声明。
 
+### 模型参数 `options`（四个接口均支持，可选）
+
+```jsonc
+{
+  "prompt": "写一个防抖 Hook",
+  "language": "typescript",
+  "options": { "temperature": 0.3, "stream": true }
+}
+```
+
+| 字段 | 取值 | 默认 | 说明 |
+|---|---|---|---|
+| `temperature` | 0–1 | 0.3 | 采样温度；越界返回 `400 VALIDATION`，路径为 `options.temperature` |
+| `stream` | boolean | `true` | 关闭时上游改为非流式一次性返回 |
+
+`stream: false` 时**对浏览器的协议不变**：仍然是 `text/event-stream`，只是只有一个 `delta` 事件。
+这样前端不需要为两种模式写两套解析，代价是首字节要等到全文生成完。
+
+这两个值来自用户偏好（`localStorage`），前端已经清洗过一遍，服务端**仍然重新校验**：
+浏览器里的值用户随时能改，不能把它当作可信输入。
+
 ### 上下文裁剪规则（服务端强制）
 
 | 规则 | 值 |
@@ -136,7 +157,7 @@ GET /api/conversations?limit=10&q=Hook&range=7d
 |---|---|---|---|
 | 400 | `BAD_REQUEST` | 请求体不是合法 JSON | 否 |
 | 400 | `VALIDATION` | 字段校验失败，`issues` 给出字段级原因 | 否 |
-| 413 | `PAYLOAD_TOO_LARGE` | 请求体超过 64 KB | 否 |
+| 413 | `PAYLOAD_TOO_LARGE` | 请求体超过 160 KB（约 16 万字符） | 否 |
 | 429 | `RATE_LIMIT` | 触发限流，响应头带 `Retry-After`（秒） | 是（等待后） |
 | 503 | `CONFIG` | 服务端缺少环境变量 | 否 |
 

@@ -84,6 +84,107 @@ test.describe("代码片段页", () => {
   });
 });
 
+test.describe("设置页", () => {
+  test("展示四类设置与服务端变量说明，且不泄露真实值", async ({ page }) => {
+    await page.goto("/settings");
+
+    await expect(page.getByRole("heading", { name: "默认值" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "模型调用" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "外观" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "服务端配置" })).toBeVisible();
+
+    // 只应有变量名与示例占位，不能出现形如真实密钥的串
+    await expect(page.getByRole("cell", { name: "AI_API_KEY", exact: true })).toBeVisible();
+    const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+    expect(body).not.toMatch(/sk-[A-Za-z0-9]{16,}/);
+    expect(body).not.toMatch(/sb_secret_[A-Za-z0-9]{10,}/);
+  });
+
+  test("修改默认语言后刷新仍在，并作用于工作台", async ({ page }) => {
+    await page.goto("/settings");
+
+    await page.getByRole("combobox", { name: "默认语言" }).click();
+    await page.getByRole("option", { name: "Python" }).click();
+
+    await page.reload();
+    await expect(page.getByRole("combobox", { name: "默认语言" })).toContainText("Python");
+
+    await page.goto("/workspace");
+    await expect(page.locator("#composer-language")).toContainText("Python");
+  });
+
+  test("流式开关可关闭并保持", async ({ page }) => {
+    await page.goto("/settings");
+
+    const toggle = page.getByRole("switch", { name: "流式输出" });
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    await page.reload();
+    await expect(page.getByRole("switch", { name: "流式输出" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
+  test("恢复默认清空偏好", async ({ page }) => {
+    await page.goto("/settings");
+
+    await page.getByRole("combobox", { name: "默认语言" }).click();
+    await page.getByRole("option", { name: "Go" }).click();
+    await expect(page.getByRole("combobox", { name: "默认语言" })).toContainText("Go");
+
+    await page.getByRole("button", { name: /恢复默认/ }).click();
+    await expect(page.getByRole("combobox", { name: "默认语言" })).toContainText("TypeScript");
+  });
+});
+
+test.describe("设置作用于真实请求", () => {
+  test("温度与流式开关随请求体下发", async ({ page }) => {
+    // 先写入偏好，再打开页面：模拟"上次已经设置好"
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "codepilot.preferences.v1",
+        JSON.stringify({
+          defaultTaskType: "generate",
+          defaultLanguage: "go",
+          temperature: 0.7,
+          streaming: false,
+        }),
+      );
+    });
+
+    // 拦下真实调用：这条用例只验证"请求长什么样"，不需要模型与数据库
+    let captured: { options?: { temperature?: number; stream?: boolean }; language?: string } | null =
+      null;
+    await page.route("**/api/ai/generate", async (route) => {
+      captured = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+        body: [
+          'data: {"type":"meta","requestId":"t","task":"generate","model":"stub"}',
+          'data: {"type":"delta","text":"ok"}',
+          'data: {"type":"done","usage":null,"model":"stub"}',
+          "",
+        ].join("\n\n"),
+      });
+    });
+
+    await page.goto("/workspace");
+    // 默认语言也该来自偏好
+    await expect(page.locator("#composer-language")).toContainText("Go");
+
+    await page.locator("#composer-prompt").fill("写个函数");
+    await page.getByRole("button", { name: "生成代码", exact: true }).click();
+
+    await expect.poll(() => captured?.options ?? null).not.toBeNull();
+    expect(captured!.options).toEqual({ temperature: 0.7, stream: false });
+    expect(captured!.language).toBe("go");
+  });
+});
+
 test.describe("未匹配的路由", () => {
   test("返回 404 页面而不是白屏", async ({ page }) => {
     const response = await page.goto("/no-such-page");

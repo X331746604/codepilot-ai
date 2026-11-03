@@ -107,6 +107,53 @@ describe("explainInputSchema 与 refactorInputSchema", () => {
   });
 });
 
+describe("modelOptions", () => {
+  const base = { prompt: "x", language: "typescript" };
+
+  it("不传 options 时按默认参数调用", () => {
+    const result = generateInputSchema.safeParse(base);
+    expect(result.success && result.data.options).toBeUndefined();
+  });
+
+  it("接受 0–1 之间的温度与流式开关", () => {
+    const result = generateInputSchema.safeParse({
+      ...base,
+      options: { temperature: 0.7, stream: false },
+    });
+    expect(result.success && result.data.options).toEqual({ temperature: 0.7, stream: false });
+  });
+
+  it("温度越界被拒绝（前端能改 localStorage，服务端必须自己把关）", () => {
+    expect(
+      generateInputSchema.safeParse({ ...base, options: { temperature: 1.5 } }).success,
+    ).toBe(false);
+    expect(
+      generateInputSchema.safeParse({ ...base, options: { temperature: -0.1 } }).success,
+    ).toBe(false);
+  });
+
+  it("温度不是数字时被拒绝", () => {
+    expect(
+      generateInputSchema.safeParse({ ...base, options: { temperature: "0.5" } }).success,
+    ).toBe(false);
+  });
+
+  it("四类任务都接受同一份 options", () => {
+    const options = { temperature: 0.2, stream: true };
+    expect(
+      explainInputSchema.safeParse({ code: "x", language: "go", options }).success,
+    ).toBe(true);
+    expect(
+      debugInputSchema.safeParse({ code: "x", errorText: "boom", language: "go", options })
+        .success,
+    ).toBe(true);
+    expect(
+      refactorInputSchema.safeParse({ code: "x", goals: ["naming"], language: "go", options })
+        .success,
+    ).toBe(true);
+  });
+});
+
 describe("isTaskType", () => {
   it("只放行四类任务", () => {
     expect(isTaskType("generate")).toBe(true);

@@ -29,6 +29,7 @@ import {
 import { getLanguageLabel, LANGUAGES } from "@/lib/constants";
 import type { SnippetRow } from "@/lib/db/types";
 import { useSnippets } from "@/hooks/use-snippets";
+import { usePreferences } from "@/hooks/use-preferences";
 
 const EMPTY_DRAFT: SnippetDraft = {
   title: "",
@@ -57,6 +58,7 @@ export function SnippetsView() {
   const [pending, setPending] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SnippetRow | null>(null);
 
+  const { preferences } = usePreferences();
   const { items, isLoading, isLoadingMore, hasMore, error, create, update, remove, loadMore } =
     useSnippets({
       q: debounced,
@@ -72,7 +74,8 @@ export function SnippetsView() {
   function openCreate() {
     setEditorMode("create");
     setEditorId(null);
-    setDraft(EMPTY_DRAFT);
+    // 新建片段沿用设置里的默认语言，省掉每次手动切一次
+    setDraft({ ...EMPTY_DRAFT, language: preferences.defaultLanguage });
     setEditorOpen(true);
   }
 

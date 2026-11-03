@@ -17,7 +17,10 @@ export default defineConfig({
     channel: "msedge",
     viewport: { width: 1440, height: 900 },
     locale: "zh-CN",
-    trace: "retain-on-failure",
+    // trace 里每个网络分片都会落成独立文件（单个用例能有上百个），
+    // 而本机的删除保护会拦下超过 50 个文件的批量删除，导致下一次跑测试时
+    // Playwright 清理输出目录直接失败。失败时仍有截图 + 页面快照 + 堆栈，够定位问题。
+    trace: "off",
     screenshot: "only-on-failure",
   },
   webServer: {

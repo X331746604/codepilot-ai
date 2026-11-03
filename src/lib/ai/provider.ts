@@ -5,6 +5,7 @@
  * 不关心业务语义（那是 prompts 与 route 的事），也不做任何持久化。
  */
 
+import { DEFAULT_TEMPERATURE, MAX_OUTPUT_TOKENS } from "@/lib/constants";
 import type { AiRuntimeConfig } from "@/lib/env";
 
 import { AiError, codeFromHttpStatus, toErrorPayload, type AiErrorPayload } from "./errors";
@@ -24,6 +25,13 @@ export type AiStreamEvent =
 export type CallMetrics = {
   /** 实际发出的请求次数（含首次），用于日志观察重试频率 */
   attempts: number;
+};
+
+/** 由用户偏好驱动、随请求下发的调用参数。 */
+export type CallOptions = {
+  temperature?: number;
+  /** false 时改为一次性返回；对浏览器的事件协议不变，只是只有一个 delta */
+  stream?: boolean;
 };
 
 const RETRY_DELAYS_MS = [500, 1_500];
@@ -50,7 +58,9 @@ async function postCompletion(
   messages: ChatMessage[],
   signal: AbortSignal,
   metrics: CallMetrics,
+  options: CallOptions,
 ): Promise<Response> {
+  const streaming = options.stream !== false;
   let lastError: AiError | null = null;
 
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
@@ -66,11 +76,12 @@ async function postCompletion(
         body: JSON.stringify({
           model: config.model,
           messages,
-          stream: true,
-          temperature: 0.3,
-          max_tokens: 2_048,
+          stream: streaming,
+          temperature: options.temperature ?? DEFAULT_TEMPERATURE,
+          max_tokens: MAX_OUTPUT_TOKENS,
           // 让服务端在最后一个分片里带上 token 用量；不支持该参数的供应商会忽略它。
-          stream_options: { include_usage: true },
+          // 非流式响应本来就带 usage，不需要这个字段。
+          ...(streaming ? { stream_options: { include_usage: true } } : {}),
         }),
         signal,
         cache: "no-store",
@@ -181,10 +192,50 @@ async function* parseStream(
   }
 }
 
+/**
+ * 非流式响应：一次拿到完整内容，仍然按同一套事件上报。
+ *
+ * 这样浏览器侧的解析逻辑不需要分叉——关闭流式只是"只有一个 delta"，
+ * 而不是"换一种协议"。代价是首字节要等到全部生成完，这正是该开关的含义。
+ */
+async function* parseCompletion(response: Response): AsyncGenerator<AiStreamEvent> {
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    throw new AiError("INVALID_RESPONSE", "模型返回了无法解析的响应体", { cause: error });
+  }
+
+  const body = payload as {
+    model?: string;
+    usage?: unknown;
+    error?: { message?: string };
+    choices?: Array<{
+      message?: { content?: string | null };
+      finish_reason?: string | null;
+    }>;
+  };
+
+  if (body.error) {
+    throw new AiError("UPSTREAM", body.error.message ?? "模型返回错误");
+  }
+
+  const choice = body.choices?.[0];
+  const text = choice?.message?.content ?? "";
+  if (text) yield { type: "delta", text };
+
+  yield {
+    type: "done",
+    usage: readUsage(body.usage),
+    model: body.model ?? "",
+    finishReason: choice?.finish_reason ?? null,
+  };
+}
+
 export async function* streamCompletion(
   config: AiRuntimeConfig,
   messages: ChatMessage[],
-  options: { signal?: AbortSignal; metrics?: CallMetrics } = {},
+  options: { signal?: AbortSignal; metrics?: CallMetrics } & CallOptions = {},
 ): AsyncGenerator<AiStreamEvent> {
   const metrics = options.metrics ?? { attempts: 0 };
   const controller = new AbortController();
@@ -199,8 +250,12 @@ export async function* streamCompletion(
   options.signal?.addEventListener("abort", onAbort, { once: true });
 
   try {
-    const response = await postCompletion(config, messages, controller.signal, metrics);
-    yield* parseStream(response, controller.signal);
+    const response = await postCompletion(config, messages, controller.signal, metrics, options);
+    if (options.stream === false) {
+      yield* parseCompletion(response);
+    } else {
+      yield* parseStream(response, controller.signal);
+    }
   } catch (error) {
     if (timedOut) {
       yield { type: "error", error: new AiError("TIMEOUT", "上游响应超时").toPayload() };

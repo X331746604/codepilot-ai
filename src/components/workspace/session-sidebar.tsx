@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Settings,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -299,6 +300,12 @@ export function SessionSidebar({
           <Link href="/snippets">
             <Bookmark className="size-4" />
             代码片段
+          </Link>
+        </Button>
+        <Button asChild variant="ghost" size="sm" className="w-full justify-start gap-2">
+          <Link href="/settings">
+            <Settings className="size-4" />
+            设置
           </Link>
         </Button>
         <p className="text-xs text-muted-foreground">单用户模式 · 尚未做用户隔离</p>

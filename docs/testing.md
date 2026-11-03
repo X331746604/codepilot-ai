@@ -4,11 +4,11 @@
 
 | 层 | 工具 | 文件 | 用例数 |
 |---|---|---|---|
-| 纯函数单测（node） | Vitest | 11 个 `*.test.ts` | 127 |
-| 组件测试（jsdom） | Vitest + Testing Library | 3 个 `*.test.tsx` | 35 |
-| 端到端（真实浏览器） | Playwright（系统 Edge） | 2 个 spec | 9（含 1 条可选主链路） |
+| 纯函数与编排层（node） | Vitest | 14 个 `*.test.ts` | 177 |
+| 组件测试（jsdom） | Vitest + Testing Library | 4 个 `*.test.tsx` | 41 |
+| 端到端（真实浏览器） | Playwright（系统 Edge） | 2 个 spec | 14（含 1 条可选主链路） |
 
-合计 **162 个用例**，`pnpm test` 约 12 秒跑完；e2e 冒烟约 1.5 分钟，主链路约 15 秒。
+合计 **218 个用例**，`pnpm test` 约 15 秒跑完；e2e 冒烟约 1.5 分钟，主链路约 15 秒。
 
 ## 2. 命令
 
@@ -47,10 +47,12 @@ pnpm test:e2e --grep "主链路"
 |---|---|
 | `lib/constants.ts` | 100% |
 | `lib/ai/{context,errors,prompts,schemas}.ts` | 100% |
+| `lib/ai/provider.ts` | 91.7% |
 | `lib/db/{cursor,search,schemas}.ts` | 90.9% / 100% / 100% |
 | `lib/markdown/extract-code.ts` | 100% |
 | `lib/ai-client/stream.ts` | 95.5% |
-| **合计** | **98.6%** |
+| `lib/preferences{,-store}.ts` | 97.1% / 100% |
+| **合计** | **97.1%** |
 
 阈值设为行/函数/语句 70%、分支 60%——比实测低一截，是因为它是"不许退步"的红线，不是目标值。故意写低一点，避免新增一行防御性代码就卡住流水线。
 
@@ -62,7 +64,10 @@ pnpm test:e2e --grep "主链路"
 - `streamAiTask`：一帧被拆成两个分片、CRLF、坏 JSON、流中途 `error` 事件、读流时被中止
 - `buildMessages`：system 与 user 不串（用户输入里的"忽略上面的规则"不会进系统提示）
 - `cursor`：伪造游标一律拒绝，不会带进 SQL
-- `ai/schemas`：四类任务各自的必填与上限
+- `ai/schemas`：四类任务各自的必填与上限，以及 `options.temperature` 的越界拒绝
+- `ai/provider`：流式解析、非流式一次性返回、`stream_options` 只在流式时出现、401 不重试 / 5xx 重试一次
+- `ai/handler`：请求体校验、配置缺失、以及"校验先于限流"（20 次非法请求仍返回 400 而不是 429）
+- `preferences` / `preferences-store`：字段级容错、温度夹取、跨标签页同步、坏数据回退默认值
 
 **组件测试**只覆盖"状态分支多、错了用户会困惑"的三个组件：会话侧栏（加载/错误/无数据/无匹配/分页提示）、消息气泡（生成中/已停止/失败/裁剪徽标）、复制按钮（成功与失败不能混为一谈）。
 
@@ -73,7 +78,7 @@ pnpm test:e2e --grep "主链路"
 
 ## 6. 明确没有覆盖的
 
-1. **API 路由与仓储层**：`/api/ai/*`、`/api/conversations`、`/api/snippets` 没有自动化单测。它们依赖 Supabase，本地测要么起一个假服务、要么连真库；目前靠 e2e 主链路 + 每轮任务的 `curl` 实测兜底。
+1. **API 路由的完整链路**：`/api/ai/*` 只测到"校验 + 配置 + 落库之前"的编排层，真正读写数据库的那段依赖 Supabase；`/api/conversations`、`/api/snippets` 则完全没有单测。本地测这些要么起一个假服务、要么连真库，目前靠 e2e 主链路 + 每轮任务的 `curl` 实测兜底。
 2. **数据库约束与 RLS**：靠 `scripts/verify-supabase.mjs` 单独验证，不在测试套件里。
 3. **主题切换、移动端抽屉、下拉菜单**：Radix 的 Portal 与焦点管理在 jsdom 里行为与真实浏览器差异较大，测出来的通过率不代表真实可用。
 4. **视觉回归**：没有截图比对。界面问题仍靠人工看截图。

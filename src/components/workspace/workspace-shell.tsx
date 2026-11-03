@@ -24,10 +24,10 @@ import { SessionSidebar } from "@/components/workspace/session-sidebar";
 import { TaskComposer } from "@/components/workspace/task-composer";
 import { useAiTask } from "@/hooks/use-ai-task";
 import { useConversations } from "@/hooks/use-conversations";
+import { usePreferences } from "@/hooks/use-preferences";
 import { createSnippetRequest } from "@/lib/api-client/snippets";
 import {
   DEFAULT_LANGUAGE,
-  DEFAULT_TASK_TYPE,
   getTaskType,
   type Language,
   type RefactorGoal,
@@ -38,8 +38,14 @@ import { extractCodeBlocks } from "@/lib/markdown/extract-code";
 const DEFAULT_GOALS: RefactorGoal[] = ["naming", "split", "readability"];
 
 export function WorkspaceShell() {
-  const [mode, setMode] = useState<TaskType>(DEFAULT_TASK_TYPE);
-  const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
+  // 偏好是异步从 localStorage 读出来的（首帧是默认值），所以这里用「覆盖值」而不是
+  // 直接把它灌进 useState：否则读完偏好也改不动已经初始化好的 state。
+  const [modeOverride, setModeOverride] = useState<TaskType | null>(null);
+  const [languageOverride, setLanguageOverride] = useState<Language | null>(null);
+  const { preferences } = usePreferences();
+  const mode = modeOverride ?? preferences.defaultTaskType;
+  const language = languageOverride ?? preferences.defaultLanguage;
+
   const [prompt, setPrompt] = useState("");
   const [errorText, setErrorText] = useState("");
   const [constraint, setConstraint] = useState("");
@@ -69,7 +75,7 @@ export function WorkspaceShell() {
   const conversations = useConversations();
 
   function handlePickExample(nextMode: TaskType, nextPrompt: string) {
-    setMode(nextMode);
+    setModeOverride(nextMode);
     setPrompt(nextPrompt);
     // 等 React 把新值写进 DOM 后再聚焦，否则光标会落在旧内容末尾。
     requestAnimationFrame(() => promptRef.current?.focus());
@@ -102,7 +108,14 @@ export function WorkspaceShell() {
       task: mode,
       language,
       prompt: display,
-      requestBody: buildRequestBody(),
+      requestBody: {
+        ...buildRequestBody(),
+        // 采样温度与流式开关随请求下发；服务端会重新校验范围
+        options: {
+          temperature: preferences.temperature,
+          stream: preferences.streaming,
+        },
+      },
     }).then(() => {
       // 首轮会创建会话、后续轮会更新 last_message_at，两种情况侧栏都要刷新
       void conversations.refresh();
@@ -255,9 +268,9 @@ export function WorkspaceShell() {
           />
           <TaskComposer
             mode={mode}
-            onModeChange={setMode}
+            onModeChange={setModeOverride}
             language={language}
-            onLanguageChange={setLanguage}
+            onLanguageChange={setLanguageOverride}
             prompt={prompt}
             onPromptChange={setPrompt}
             errorText={errorText}

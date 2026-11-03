@@ -223,6 +223,8 @@ export function createAiRoute(task: TaskType) {
           for await (const event of streamCompletion(config, messages, {
             signal: request.signal,
             metrics,
+            temperature: parsed.data.options?.temperature,
+            stream: parsed.data.options?.stream,
           })) {
             if (event.type === "delta") assistantText += event.text;
             if (event.type === "done") {
