@@ -42,6 +42,8 @@ export default defineConfig({
     // 必须展开 process.env：Playwright 传了 env 就不再继承父进程环境。
     env: {
       ...(process.env as Record<string, string>),
+      // 与生产构建分开，否则 next dev 会试图清空 .next，被本机的删除保护拦下
+      NEXT_DIST_DIR: process.env.NEXT_DIST_DIR ?? ".next-e2e",
       NODE_USE_ENV_PROXY: process.env.NODE_USE_ENV_PROXY ?? "1",
       NO_PROXY: process.env.NO_PROXY ?? "localhost,127.0.0.1",
     },

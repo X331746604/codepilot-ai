@@ -35,9 +35,11 @@ pnpm dev                     # http://localhost:3000
 | `pnpm build` / `pnpm start` | 生产构建与启动 |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm lint` | ESLint |
-| `pnpm test` | 单元 + 组件测试（162 个用例，约 12 秒） |
+| `pnpm test` | 单元 + 组件测试（220 个用例，约 16 秒） |
 | `pnpm test:coverage` | 带覆盖率，低于阈值失败 |
 | `pnpm test:e2e` | 冒烟 e2e（不依赖数据库与模型） |
+| `pnpm verify:migrations` | 用 PGlite 跑全部迁移并验证 RLS（无需网络） |
+| `pnpm scan:secrets` | 扫描仓库与构建产物中的密钥（需先 build） |
 | `pnpm verify` | typecheck + lint + test，提交前跑这个 |
 
 测试的范围、阈值与明确未覆盖的部分见 [docs/testing.md](docs/testing.md)。
@@ -51,6 +53,7 @@ pnpm dev                     # http://localhost:3000
 | [docs/database.md](docs/database.md) | 表结构、索引与迁移 |
 | [docs/auth.md](docs/auth.md) | 认证方案、RLS 策略、越权测试与限制 |
 | [docs/testing.md](docs/testing.md) | 测试分层、覆盖率、未覆盖清单 |
+| [docs/security.md](docs/security.md) | 依赖审计、CSP 与响应头、密钥扫描、残余风险 |
 | [docs/environment-check.md](docs/environment-check.md) | 本机环境核查记录 |
 
 ## 已知限制
@@ -62,4 +65,5 @@ pnpm dev                     # http://localhost:3000
 - **限流是进程内内存计数**：多实例部署时每个实例独立计数，真实上限 = 配置值 × 实例数。
 - **上下文预算按字符而非 token 计**：24000 字符是成本护栏，不是精确计费。
 - **代码块提取用正则**：回答里若出现教人写 ` ``` ` 的内容会切分错误。
-- **未做账号、未部署**：目前只在本地运行。
+- **未部署**：目前只在本地运行，没有线上链接（任务 15）。
+- **开发依赖仍有 3 条安全公告**：都在测试/构建工具链里，部署产物零已知漏洞，详见 [docs/security.md](docs/security.md)。

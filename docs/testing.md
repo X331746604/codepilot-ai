@@ -6,7 +6,7 @@
 |---|---|---|---|
 | 纯函数与编排层（node） | Vitest | 14 个 `*.test.ts` | 179 |
 | 组件测试（jsdom） | Vitest + Testing Library | 4 个 `*.test.tsx` | 41 |
-| 端到端（真实浏览器） | Playwright（系统 Edge） | 3 个 spec + 1 个 setup | 23（含 2 条登录态准备、1 条可选主链路） |
+| 端到端（真实浏览器） | Playwright（系统 Edge） | 3 个 spec + 1 个 setup | 25（含 2 条登录态准备、2 条安全响应头、1 条可选主链路） |
 
 合计 **220 个用例**，`pnpm test` 约 15 秒跑完；e2e 冒烟约 2 分钟，主链路约 15 秒。
 
@@ -107,3 +107,4 @@ pnpm test:e2e --grep "主链路"
 7. **断言写错会被当成产品缺陷**：第一次跑 e2e 时 4 条失败全是选择器/文案写错，不是功能坏了。这也是"人工验证容易误判"的实证——同样的场景固化成用例后，错一次就永久修掉了。
 8. **`signOut()` 默认是全局吊销**：supabase-js 的 `signOut()` 不带参数时 scope=global，会在服务端吊销该账号的**全部** refresh token。退出用例如果拿共享账号来测，setup 存的 storageState 会在这一条之后集体失效——后续页面全被判定为未登录，表现为整片重定向与 `Auth session missing`。现在退出用例用一次性账号（`e2e-logout@codepilot.local`），与共享账号隔离。
 9. **`getByRole("alert")` 会命中 Next 的路由播报器**：`__next-route-announcer__` 也是 `role=alert`，登录失败提示的断言会触发 strict mode 报错。改成按文案定位。
+10. **dev 与 build 共用一个 `.next` 会互相清理**：`next dev` 启动时发现目录里是生产构建产物，会整目录删除；本机的删除保护在 50 个文件处拦截，表现为 webServer 直接起不来。现在 e2e 通过 `NEXT_DIST_DIR=.next-e2e` 使用独立目录（`playwright.config.ts` 的 webServer env），生产构建仍用 `.next`。

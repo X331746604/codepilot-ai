@@ -40,6 +40,8 @@ yarn-error.log*
 
 # 测试产物
 /test-results/
+# e2e 专用构建目录（与生产构建分开）
+/.next-e2e/
 # Playwright 登录态（含会话 cookie，绝不能进版本库）
 /e2e/.auth/
 /playwright-report/

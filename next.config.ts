@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Playwright 启动 dev 时用独立目录（`.next-e2e`）。dev 与 build 的缓存格式
+  // 不兼容，同一个 .next 会让 dev 启动时整目录清理，而本机的删除保护会拦下
+  // 超过 50 个文件的批量删除，表现为 webServer 直接起不来。
+  distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   // Next 16 默认阻止跨来源访问 dev 资源（/_next/hmr）。开发时用 127.0.0.1
   // 而不是 localhost 打开页面会被判定为跨来源，表现为"页面正常但完全不响应交互"，
   // 且控制台没有报错——极难排查。这里显式放行本地两个来源。
