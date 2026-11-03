@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { OTHER_USER, publicConfig, TEST_USER } from "./helpers/user";
+import { OTHER_USER, publicConfig, supabaseAdmin, TEST_USER } from "./helpers/user";
 
 /**
  * 认证与隔离。
@@ -9,6 +9,19 @@ import { OTHER_USER, publicConfig, TEST_USER } from "./helpers/user";
  * 未登录被拒、登录可用、退出即失效，以及"B 拿不到 A 的数据"——
  * 同时从**接口层**与**数据库 RLS**两条路径验证。
  */
+
+/**
+ * 退出用例必须用自己的账号。
+ *
+ * supabase-js 的 `signOut()` 默认 scope=global，会在服务端吊销该用户的
+ * **全部** refresh token。如果拿 TEST_USER 来测，setup 存下的 storageState
+ * 会在这一条用例之后集体失效，后续所有页面都变成"未登录"——
+ * 表现为整片 404/重定向，而真正的产品代码没有问题。
+ */
+const LOGOUT_USER = {
+  email: "e2e-logout@codepilot.local",
+  password: "e2e-password-789",
+};
 
 test.describe("未登录", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
@@ -45,16 +58,21 @@ test.describe("登录与退出", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test("登录后进入工作台；退出后回登录页且会话失效", async ({ page }) => {
+    // 一次性账号：退出会吊销它的全部会话，不能牵连共享登录态
+    const admin = supabaseAdmin();
+    const id = await admin.createUser(LOGOUT_USER.email, LOGOUT_USER.password);
+    await admin.resetPassword(id, LOGOUT_USER.password);
+
     await page.goto("/login");
 
-    await page.getByLabel("邮箱").fill(TEST_USER.email);
-    await page.getByLabel("密码").fill(TEST_USER.password);
+    await page.getByLabel("邮箱").fill(LOGOUT_USER.email);
+    await page.getByLabel("密码").fill(LOGOUT_USER.password);
     await page.getByRole("button", { name: "登录", exact: true }).click();
 
     await expect(page).toHaveURL(/\/workspace/, { timeout: 30_000 });
     await expect(page.locator("#composer-prompt")).toBeVisible({ timeout: 30_000 });
 
-    await page.getByRole("button", { name: `账号：${TEST_USER.email}` }).click();
+    await page.getByRole("button", { name: `账号：${LOGOUT_USER.email}` }).click();
     await page.getByRole("menuitem", { name: /退出登录/ }).click();
 
     await expect(page).toHaveURL(/\/login/, { timeout: 30_000 });
@@ -71,7 +89,9 @@ test.describe("登录与退出", () => {
     await page.getByLabel("密码").fill("wrong-password-123");
     await page.getByRole("button", { name: "登录", exact: true }).click();
 
-    await expect(page.getByRole("alert")).toContainText("邮箱或密码不正确");
+    // 不用 getByRole("alert")：Next 的 __next-route-announcer__ 也是 role=alert，
+    // 会命中两个元素并触发 strict mode 报错
+    await expect(page.getByText("邮箱或密码不正确")).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
   });
 });

@@ -95,6 +95,8 @@ POST {SUPABASE_URL}/auth/v1/admin/users
 
 两个账号：`e2e-a@codepilot.local`（主账号）与 `e2e-b@codepilot.local`（越权验证用），密码见 `e2e/helpers/user.ts`，可用环境变量覆盖。
 
+退出用例另用一次性账号 `e2e-logout@codepilot.local`：`signOut()` 默认 `scope=global`，会吊销该账号的全部 refresh token。拿共享账号测退出，等于把后面所有用例的登录态一起废掉。
+
 ## 8. 已知限制
 
 1. **没有找回密码**：个人项目没接邮件通道，忘记密码只能在 Supabase 后台重置。登录页已如实标注。
