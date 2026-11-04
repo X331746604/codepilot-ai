@@ -308,7 +308,7 @@ export function SessionSidebar({
             设置
           </Link>
         </Button>
-        <p className="text-xs text-muted-foreground">单用户模式 · 尚未做用户隔离</p>
+        <p className="text-xs text-muted-foreground">数据按账号隔离 · 仅自己可见</p>
       </div>
 
       <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => !open && setRenameTarget(null)}>

@@ -109,3 +109,37 @@ printf '%s' "$VALUE" | pnpm dlx vercel env add AI_API_KEY production
 Vercel 保留每次部署。**Deployments → 选上一个 → Promote to Production** 即可回滚，不需要改代码。
 
 数据库迁移没有自动回滚：`0001`–`0004` 都是增量且幂等，回滚应用版本时表结构保持向前兼容，不要手动删表。
+
+## 9. 本次部署记录（2026-11-04）
+
+| 项 | 值 |
+|---|---|
+| 生产域名 | **https://codepilot-ai-chi.vercel.app** |
+| 部署 ID | `codepilot-fd67r82j5-jodrell.vercel.app` |
+| Vercel 项目 | `jodrell/codepilot-ai` |
+| 生产环境变量 | 5 个（未配置 `SUPABASE_SECRET_KEY`） |
+| 构建耗时 | 首次 4m11s，二次 43s |
+
+线上实测结果：
+
+| 检查 | 结果 |
+|---|---|
+| `GET /api/health` | 200，`ai.configured:true`、`database.configured:true`、`model:qwen-plus` |
+| 首页 | 200，1.7s |
+| CSP | 含 `nonce-` 与 `strict-dynamic`，`script-src` 无 `unsafe-inline` |
+| HSTS | `max-age=63072000; includeSubDomains; preload` |
+| 登录 | 真实账号登录成功，进入 `/workspace` |
+| **流式** | 首个增量 **1.7s**，共 **17 次**增长，**10.9s** 完成 601 tokens —— **未被网关缓冲** |
+| 渲染 | 三栏布局、代码高亮、真实用量 `qwen-plus · 10.9 s · 601 tokens` 均正常 |
+| 截图 | `docs/screenshots/16-deployed.png` |
+
+两个部署后才发现并修掉的问题：
+
+1. 顶栏与侧栏仍写着「单用户模式 · 尚未做用户隔离」——认证早就接入了，已改为「数据按账号隔离 · 仅自己可见」并移除顶栏徽标。
+2. 本机**直连 `*.vercel.app` 被重置**，所有线上验证都经 `127.0.0.1:7897` 代理完成。国内网络访问该域名同样需要代理，这是演示时要注意的前提。
+
+### 仍需在 Supabase 完成的一步
+
+`Authentication → URL Configuration` 里 `Site URL` 仍是 `http://localhost:3000`。要改成 `https://codepilot-ai-chi.vercel.app`，并在 Redirect URLs 追加 `https://codepilot-ai-chi.vercel.app/**`。
+
+密码登录不依赖这一项，但**注册确认邮件**会跳回 localhost，必须在正式演示前改掉。

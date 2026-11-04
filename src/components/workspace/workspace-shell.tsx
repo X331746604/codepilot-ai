@@ -8,7 +8,6 @@ import { UserMenu } from "@/components/auth/user-menu";
 import { Brand } from "@/components/layout/brand";
 import { SnippetDialog, type SnippetDraft } from "@/components/snippets/snippet-dialog";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -235,9 +234,6 @@ export function WorkspaceShell({
         <span className="hidden max-w-[14rem] truncate text-sm text-muted-foreground sm:inline">
           {activeTitle}
         </span>
-        <Badge variant="outline" className="ml-1 hidden font-normal sm:inline-flex">
-          单用户模式
-        </Badge>
 
         <div className="ml-auto flex items-center gap-1">
           {exchanges.length > 0 ? (

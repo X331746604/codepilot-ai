@@ -81,7 +81,9 @@ pnpm dev                     # http://localhost:3000
 
 完整步骤、Supabase 需要同步修改的两处设置、部署后验收清单与回滚方式见 [docs/deployment.md](docs/deployment.md)。
 
-> 当前状态：**尚未部署**，仓库还没有 Git 远端。本地生产构建（`pnpm build` + `next start`）已通过 e2e 验证。
+> 当前状态：**已部署** → https://codepilot-ai-chi.vercel.app （2026-11-04）
+>
+> 国内网络直连 `*.vercel.app` 会被重置，访问演示需要代理；这与应用本身无关。Supabase 的 Site URL 尚待改成该域名，否则注册确认邮件会跳回 localhost。
 
 ## 测试记录
 
@@ -99,6 +101,8 @@ pnpm dev                     # http://localhost:3000
 | `E2E_PROD=1 … --grep "CSP 下脚本仍然执行"` | 通过：生产模式下主题切换可用，证明 hydration 未被 CSP 阻断 |
 | `pnpm verify:migrations` | 15/15（PGlite 跑完 0001–0004 并验证 RLS） |
 | `pnpm scan:secrets` | 540 文件，0 命中 |
+| **线上** `GET /api/health` | 200，模型与数据库均 `configured: true` |
+| **线上流式** | 首字 1.7s、17 次增量、10.9s 完成 601 tokens，未被缓冲 |
 | `pnpm audit --prod` | 0 漏洞 |
 
 ## 已知限制
