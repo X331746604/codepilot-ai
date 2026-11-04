@@ -57,13 +57,15 @@ docs/                 接口、数据库、认证、安全、测试、部署、�
 
 ## 快速开始
 
+完整流程（环境准备 → 建库 → 启动 → 四类任务 → 片段 → 设置 → 常见问题）见 **[docs/getting-started.md](docs/getting-started.md)**。最短路径：
+
 ```bash
 pnpm install
 cp .env.example .env.local   # 填入模型与数据库配置
 pnpm dev                     # http://localhost:3000
 ```
 
-`.env.local` 需要两类配置：模型服务（`AI_API_KEY` 等）与 Supabase（`NEXT_PUBLIC_SUPABASE_*` + `SUPABASE_SECRET_KEY`）。完整变量清单见 `.env.example`。
+`.env.local` 需要两类配置：模型服务（`AI_API_KEY` 等）与 Supabase 的公开配置（`NEXT_PUBLIC_SUPABASE_*`）。`SUPABASE_SECRET_KEY` **只在跑脚本时用**（建表自检、建测试账号），运行时不需要。完整清单见 `.env.example`。
 
 数据库需要按顺序执行 `supabase/migrations/` 下的四个文件（Schema → 片段表 → 搜索索引 → 认证与 RLS），详见 [docs/database.md](docs/database.md)。首次使用需要注册一个账号，见 [docs/auth.md](docs/auth.md)。
 
@@ -97,6 +99,7 @@ pnpm dev                     # http://localhost:3000
 
 | 文档 | 内容 |
 |---|---|
+| [docs/getting-started.md](docs/getting-started.md) | **完整使用流程**：环境、建库、启动、四类任务、常见问题 |
 | [docs/requirements.md](docs/requirements.md) | 需求与验收标准 |
 | [docs/ai-api.md](docs/ai-api.md) | 四个 AI 接口与流式协议、错误分类 |
 | [docs/database.md](docs/database.md) | 表结构、索引与迁移 |
