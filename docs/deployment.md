@@ -119,6 +119,7 @@ Vercel 保留每次部署。**Deployments → 选上一个 → Promote to Produc
 | Vercel 项目 | `jodrell/codepilot-ai` |
 | 生产环境变量 | 5 个（未配置 `SUPABASE_SECRET_KEY`） |
 | 构建耗时 | 首次 4m11s，二次 43s |
+| 源码仓库 | https://github.com/X331746604/codepilot-ai （私有，已连接 Vercel 自动部署） |
 
 线上实测结果：
 

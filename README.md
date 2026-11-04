@@ -119,6 +119,8 @@ pnpm dev                     # http://localhost:3000
 
 > 当前状态：**已部署** → https://codepilot-ai-chi.vercel.app （2026-11-04）
 >
+> 源码仓库：[X331746604/codepilot-ai](https://github.com/X331746604/codepilot-ai)（私有）。已连接 Vercel，push 到 `main` 自动部署。
+>
 > 国内网络直连 `*.vercel.app` 会被重置，访问演示需要代理；这与应用本身无关。Supabase 的 Site URL 尚待改成该域名，否则注册确认邮件会跳回 localhost。
 
 ## 测试记录
