@@ -131,7 +131,7 @@ Vercel 保留每次部署。**Deployments → 选上一个 → Promote to Produc
 | 登录 | 真实账号登录成功，进入 `/workspace` |
 | **流式** | 首个增量 **1.7s**，共 **17 次**增长，**10.9s** 完成 601 tokens —— **未被网关缓冲** |
 | 渲染 | 三栏布局、代码高亮、真实用量 `qwen-plus · 10.9 s · 601 tokens` 均正常 |
-| 截图 | `docs/screenshots/16-deployed.png` |
+| 截图 | `docs/screenshots/08-deployed.png` |
 
 两个部署后才发现并修掉的问题：
 

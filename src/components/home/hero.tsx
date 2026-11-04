@@ -21,7 +21,7 @@ export function Hero() {
       />
       <div className="relative mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
         <Badge variant="outline" className="font-normal">
-          MVP 开发中 · 核心链路已接通，账号体系待接入
+          MVP 已上线 · 账号隔离与流式生成
         </Badge>
 
         <h1 className="mt-6 max-w-3xl text-3xl leading-tight font-semibold tracking-tight sm:text-4xl lg:text-5xl">

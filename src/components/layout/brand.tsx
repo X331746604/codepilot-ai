@@ -9,14 +9,14 @@ export function Brand({ className }: { className?: string }) {
     <Link
       href="/"
       className={cn(
-        "flex items-center gap-2 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+        "flex shrink-0 items-center gap-2 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
         className,
       )}
     >
       <span className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground">
         <CodeXml className="size-4" />
       </span>
-      <span className="text-sm font-semibold tracking-tight">{APP_NAME}</span>
+      <span className="text-sm font-semibold tracking-tight whitespace-nowrap">{APP_NAME}</span>
     </Link>
   );
 }

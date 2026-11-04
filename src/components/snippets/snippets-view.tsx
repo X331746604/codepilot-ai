@@ -147,12 +147,12 @@ export function SnippetsView({
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4 sm:px-6">
           <Brand />
           <span className="text-sm text-muted-foreground">/</span>
-          <span className="text-sm">代码片段</span>
+          <span className="text-sm whitespace-nowrap">代码片段</span>
           <div className="ml-auto flex items-center gap-1">
             <Button asChild variant="ghost" size="sm">
-              <Link href="/workspace">
+              <Link href="/workspace" aria-label="返回工作台">
                 <ArrowLeft data-icon="inline-start" />
-                返回工作台
+                <span className="hidden sm:inline">返回工作台</span>
               </Link>
             </Button>
             <ThemeToggle />

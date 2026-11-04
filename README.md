@@ -24,6 +24,37 @@ flowchart LR
 2. **历史与落库在服务端**。客户端只传 `conversationId`，上下文由数据库读出并按预算裁剪，不信任客户端声明。
 3. **流式是单向 SSE**。四个任务共用 `meta / delta / done / error` 四种事件，前端解析逻辑只有一份。
 
+## 界面
+
+| 首页 | 工作台（真实生成） |
+|---|---|
+| ![首页](docs/screenshots/01-home.png) | ![工作台](docs/screenshots/02-workspace.png) |
+
+| 代码片段 | 设置 |
+|---|---|
+| ![代码片段](docs/screenshots/05-snippets.png) | ![设置](docs/screenshots/06-settings.png) |
+
+线上录屏 **49 秒**：[docs/demo.mp4](docs/demo.mp4)（真实登录、生成、保存片段，无剪辑）。移动端与深色主题见 `docs/screenshots/`。
+
+## 目录结构
+
+```
+src/
+  app/                页面与 Route Handler（/api/ai/*、/api/conversations、/api/snippets）
+  components/         workspace / chat / snippets / settings / ui
+  hooks/              use-ai-task、use-conversations、use-snippets、use-preferences
+  lib/
+    ai/               provider（SSE 解析）、prompts、schemas、context 裁剪、错误分类
+    ai-client/        浏览器侧 SSE 消费
+    db/               Supabase 仓储层、游标分页、搜索清洗
+    auth/             会话、接口鉴权、profile
+  proxy.ts            会话乐观检查 + CSP nonce
+supabase/migrations/  0001 schema → 0002 片段 → 0003 索引 → 0004 认证与 RLS
+scripts/              密钥扫描、迁移自检、Supabase 连通性检查
+e2e/                  Playwright：冒烟、认证与越权、真实模型主链路
+docs/                 接口、数据库、认证、安全、测试、部署、演示、简历材料
+```
+
 ## 快速开始
 
 ```bash
@@ -73,6 +104,8 @@ pnpm dev                     # http://localhost:3000
 | [docs/testing.md](docs/testing.md) | 测试分层、覆盖率、未覆盖清单 |
 | [docs/security.md](docs/security.md) | 依赖审计、CSP 与响应头、密钥扫描、残余风险 |
 | [docs/deployment.md](docs/deployment.md) | Vercel 部署步骤、环境变量、验收清单与回滚 |
+| [docs/demo.md](docs/demo.md) | 3 分钟演示脚本、讲稿要点、失败预案 |
+| [docs/resume.md](docs/resume.md) | 简历条目、面试追问与回答要点 |
 | [docs/environment-check.md](docs/environment-check.md) | 本机环境核查记录 |
 
 ## 部署
@@ -95,7 +128,7 @@ pnpm dev                     # http://localhost:3000
 | `pnpm lint` | exit 0 |
 | `pnpm test` | **220 passed / 18 files**，约 16 s |
 | `pnpm test:coverage` | 通过阈值：行 **95.9%**、分支 **83.5%**、函数 94.3% |
-| `pnpm test:e2e` | **24 passed / 1 skipped**（2026-11-03 全量，约 3 min）；11-04 新增的 CSP hydration 用例已在生产模式单独通过 |
+| `pnpm test:e2e` | **25 passed / 1 skipped**（2026-11-04，约 2.5 min） |
 | `E2E_REAL=1 pnpm test:e2e --grep 主链路` | 通过，14.6 s，真实模型 + 真实数据库写入 |
 | `E2E_PROD=1 … --grep 安全响应头` | 通过：生产模式下无 `unsafe-eval`、有 HSTS 与 `upgrade-insecure-requests` |
 | `E2E_PROD=1 … --grep "CSP 下脚本仍然执行"` | 通过：生产模式下主题切换可用，证明 hydration 未被 CSP 阻断 |
@@ -103,6 +136,7 @@ pnpm dev                     # http://localhost:3000
 | `pnpm scan:secrets` | 540 文件，0 命中 |
 | **线上** `GET /api/health` | 200，模型与数据库均 `configured: true` |
 | **线上流式** | 首字 1.7s、17 次增量、10.9s 完成 601 tokens，未被缓冲 |
+| **线上录屏** | `docs/demo.mp4`，49s，真实操作（登录 → 生成 → 保存片段 → 设置） |
 | `pnpm audit --prod` | 0 漏洞 |
 
 ## 已知限制
