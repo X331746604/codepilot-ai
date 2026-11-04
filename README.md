@@ -6,6 +6,24 @@
 
 Next.js 16（App Router）· React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Supabase（Postgres + Auth）· 通义千问（OpenAI 兼容模式）· Vitest · Playwright
 
+## 架构
+
+```mermaid
+flowchart LR
+  B[浏览器] -->|HTTPS| P[proxy.ts<br/>会话乐观检查 + CSP nonce]
+  P --> R[App Router<br/>页面 / Route Handler]
+  R -->|publishable key<br/>+ 用户 access token| S[(Supabase<br/>Postgres + Auth)]
+  S -.->|RLS: owner_id = auth.uid()| S
+  R -->|OpenAI 兼容协议<br/>SSE 流式| Q[DashScope<br/>qwen-plus]
+  R -->|SSE: meta / delta / done / error| B
+```
+
+三条边界：
+
+1. **请求路径上没有 secret key**。数据库访问一律用用户 token，RLS 是最后一道闸；即使某处忘了写 owner 过滤，也读不到别人的行。
+2. **历史与落库在服务端**。客户端只传 `conversationId`，上下文由数据库读出并按预算裁剪，不信任客户端声明。
+3. **流式是单向 SSE**。四个任务共用 `meta / delta / done / error` 四种事件，前端解析逻辑只有一份。
+
 ## 快速开始
 
 ```bash
@@ -54,7 +72,34 @@ pnpm dev                     # http://localhost:3000
 | [docs/auth.md](docs/auth.md) | 认证方案、RLS 策略、越权测试与限制 |
 | [docs/testing.md](docs/testing.md) | 测试分层、覆盖率、未覆盖清单 |
 | [docs/security.md](docs/security.md) | 依赖审计、CSP 与响应头、密钥扫描、残余风险 |
+| [docs/deployment.md](docs/deployment.md) | Vercel 部署步骤、环境变量、验收清单与回滚 |
 | [docs/environment-check.md](docs/environment-check.md) | 本机环境核查记录 |
+
+## 部署
+
+目标平台是 Vercel Hobby。生产环境**只需要 5 个变量**：`AI_API_KEY`、`AI_BASE_URL`、`AI_MODEL`、`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`——`SUPABASE_SECRET_KEY` 只在本地脚本里用，不要配到生产。
+
+完整步骤、Supabase 需要同步修改的两处设置、部署后验收清单与回滚方式见 [docs/deployment.md](docs/deployment.md)。
+
+> 当前状态：**尚未部署**，仓库还没有 Git 远端。本地生产构建（`pnpm build` + `next start`）已通过 e2e 验证。
+
+## 测试记录
+
+最近一次全量执行（2026-11-04，本地）：
+
+| 命令 | 结果 |
+|---|---|
+| `pnpm typecheck` | exit 0 |
+| `pnpm lint` | exit 0 |
+| `pnpm test` | **220 passed / 18 files**，约 16 s |
+| `pnpm test:coverage` | 通过阈值：行 **95.9%**、分支 **83.5%**、函数 94.3% |
+| `pnpm test:e2e` | **24 passed / 1 skipped**（2026-11-03 全量，约 3 min）；11-04 新增的 CSP hydration 用例已在生产模式单独通过 |
+| `E2E_REAL=1 pnpm test:e2e --grep 主链路` | 通过，14.6 s，真实模型 + 真实数据库写入 |
+| `E2E_PROD=1 … --grep 安全响应头` | 通过：生产模式下无 `unsafe-eval`、有 HSTS 与 `upgrade-insecure-requests` |
+| `E2E_PROD=1 … --grep "CSP 下脚本仍然执行"` | 通过：生产模式下主题切换可用，证明 hydration 未被 CSP 阻断 |
+| `pnpm verify:migrations` | 15/15（PGlite 跑完 0001–0004 并验证 RLS） |
+| `pnpm scan:secrets` | 540 文件，0 命中 |
+| `pnpm audit --prod` | 0 漏洞 |
 
 ## 已知限制
 

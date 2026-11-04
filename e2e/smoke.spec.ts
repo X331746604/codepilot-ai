@@ -23,6 +23,24 @@ test.describe("首页", () => {
     await page.getByRole("link", { name: /打开工作台/ }).click();
     await expect(page).toHaveURL(/\/workspace$/);
   });
+
+  test("CSP 下脚本仍然执行：主题切换生效", async ({ page }) => {
+    // 只断言响应头不够——脚本被 CSP 拦掉时页面照样返回 200、HTML 也完整，
+    // 只有真正点一下才能证明 hydration 活着。这条在 dev 与生产模式都跑。
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "切换主题" }).click();
+    await page.getByRole("menuitem", { name: "深色" }).click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+      .toBe(true);
+
+    await page.getByRole("button", { name: "切换主题" }).click();
+    await page.getByRole("menuitem", { name: "浅色" }).click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+      .toBe(false);
+  });
 });
 
 test.describe("工作台骨架", () => {
@@ -235,6 +253,19 @@ test.describe("安全响应头", () => {
     expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
     expect(headers["cross-origin-opener-policy"]).toBe("same-origin");
     expect(headers["permissions-policy"]).toContain("camera=()");
+
+    // dev 与生产的三处差异，必须分别在对应模式下成立
+    if (process.env.E2E_PROD === "1") {
+      expect(scriptSrc).not.toContain("unsafe-eval");
+      expect(csp).toContain("upgrade-insecure-requests");
+      expect(headers["strict-transport-security"]).toContain("max-age=63072000");
+    } else {
+      // React 的开发态调试需要 eval；本地是 http，升级请求会打断静态资源
+      expect(scriptSrc).toContain("unsafe-eval");
+      expect(csp).not.toContain("upgrade-insecure-requests");
+      // HSTS 在本地下发会把 127.0.0.1 钉死成 https
+      expect(headers["strict-transport-security"]).toBeUndefined();
+    }
   });
 
   test("每次请求的 nonce 都不同，且真的注入到了 HTML 的脚本上", async ({ request }) => {

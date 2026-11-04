@@ -6,9 +6,11 @@
 |---|---|---|---|
 | 纯函数与编排层（node） | Vitest | 14 个 `*.test.ts` | 179 |
 | 组件测试（jsdom） | Vitest + Testing Library | 4 个 `*.test.tsx` | 41 |
-| 端到端（真实浏览器） | Playwright（系统 Edge） | 3 个 spec + 1 个 setup | 25（含 2 条登录态准备、2 条安全响应头、1 条可选主链路） |
+| 端到端（真实浏览器） | Playwright（系统 Edge） | 3 个 spec + 1 个 setup | 26（含 2 条登录态准备、2 条安全响应头、1 条 CSP hydration、1 条可选主链路） |
 
-合计 **220 个用例**，`pnpm test` 约 15 秒跑完；e2e 冒烟约 2 分钟，主链路约 15 秒。
+合计 **220 个用例**，`pnpm test` 约 16 秒跑完；e2e 冒烟约 3 分钟，主链路约 15 秒。
+
+生产模式（`E2E_PROD=1`）用 `next start` 跑同一批冒烟用例。dev 会放行 `unsafe-eval`，而线上不会——CSP 与 hydration 必须在生产模式下各验一次。
 
 端到端用例分三组：`smoke.spec.ts`（页面骨架）、`auth.spec.ts`（未登录拦截 / 登录退出 / 跨账号隔离）、
 `main-flow.spec.ts`（真实模型主链路，默认跳过）。登录态由 `auth.setup.ts` 准备：

@@ -2,6 +2,8 @@ import { defineConfig } from "@playwright/test";
 
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
+/** 生产模式：用 next start 跑已构建的产物，验证真实线上行为 */
+const isProd = process.env.E2E_PROD === "1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -34,16 +36,18 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm exec next dev --port ${PORT}`,
+    // E2E_PROD=1 时跑生产构建：dev 会放行 unsafe-eval，而线上不会，
+    // CSP 与 hydration 必须在生产模式下单独验证一次。
+    command: isProd ? `pnpm exec next start --port ${PORT}` : `pnpm exec next dev --port ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
-    // Supabase 走代理；这些变量会传给 dev server 子进程。
+    // Supabase 走代理；这些变量会传给 server 子进程。
     // 必须展开 process.env：Playwright 传了 env 就不再继承父进程环境。
     env: {
       ...(process.env as Record<string, string>),
       // 与生产构建分开，否则 next dev 会试图清空 .next，被本机的删除保护拦下
-      NEXT_DIST_DIR: process.env.NEXT_DIST_DIR ?? ".next-e2e",
+      ...(isProd ? {} : { NEXT_DIST_DIR: process.env.NEXT_DIST_DIR ?? ".next-e2e" }),
       NODE_USE_ENV_PROXY: process.env.NODE_USE_ENV_PROXY ?? "1",
       NO_PROXY: process.env.NO_PROXY ?? "localhost,127.0.0.1",
     },

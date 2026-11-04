@@ -51,38 +51,16 @@ export function readAiConfig(): AiConfigResult {
   };
 }
 
-export type SupabaseConfig = { url: string; key: string };
-
-export type SupabaseConfigResult =
-  | { ok: true; config: SupabaseConfig }
-  | { ok: false; missing: string[] };
-
-/**
- * 数据库凭据。
- * 兼容 Supabase 的两代密钥：新版 sb_secret_* 与旧版 service_role（JWT）。
- * 两者都拥有绕过 RLS 的权限，因此只允许在服务端读取。
- */
-export function readSupabaseConfig(): SupabaseConfigResult {
-  const url = (process.env.SUPABASE_URL?.trim() ?? "").replace(/\/+$/, "");
-  const key = (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
-
-  const missing: string[] = [];
-  if (!/^https?:\/\//.test(url)) missing.push("SUPABASE_URL");
-  if (!key) missing.push("SUPABASE_SECRET_KEY");
-
-  if (missing.length > 0) return { ok: false, missing };
-
-  return { ok: true, config: { url, key } };
-}
-
 export type SupabasePublicConfig = { url: string; publishableKey: string };
 
 /**
  * 浏览器与用户态客户端使用的配置。
  *
  * 这两个值是公开的：publishable key 只能做 RLS 允许的事，暴露它不等于交出数据库。
- * 与之相对，`readSupabaseConfig()` 读的是 secret key，能绕过所有 RLS，
- * 只允许脚本与服务端管理操作使用，绝不能出现在请求路径里。
+ *
+ * 注意这里**没有**读取 secret key 的入口。任务 13 之后，请求路径一律使用
+ * 「publishable key + 用户 token」，secret key 只剩脚本（建表、建测试账号）在用，
+ * 因此部署到 Vercel 时不需要配置它——生产环境少一把能绕过 RLS 的钥匙。
  */
 export function readSupabasePublicConfig(): SupabasePublicConfig | null {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "")

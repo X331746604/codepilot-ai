@@ -51,6 +51,18 @@ test.describe("未登录", () => {
   test("健康检查不需要登录（部署探针要用）", async ({ request }) => {
     const response = await request.get("/api/health");
     expect(response.ok()).toBe(true);
+
+    const body = (await response.json()) as {
+      status: string;
+      ai: { configured: boolean };
+      database: { configured: boolean };
+    };
+    expect(body.status).toBe("ok");
+    expect(body.ai.configured).toBe(true);
+    expect(body.database.configured).toBe(true);
+
+    // 只报"配好了没有"，不能把值带出来
+    expect(JSON.stringify(body)).not.toMatch(/sk-|sb_secret_|eyJhbGciOi/);
   });
 });
 
